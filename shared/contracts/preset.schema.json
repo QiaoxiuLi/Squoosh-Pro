@@ -8,6 +8,7 @@
     "schemaVersion": { "const": 1 },
     "id": { "type": "string", "minLength": 1 },
     "name": { "type": "string", "minLength": 1 },
+    "notes": { "type": ["string", "null"] },
     "kind": { "enum": ["system", "user"] },
     "output": {
       "type": "object",

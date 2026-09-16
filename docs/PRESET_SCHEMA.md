@@ -2,6 +2,8 @@
 
 Presets are JSON objects with `schemaVersion: 1`. The canonical definition is `shared/contracts/preset.schema.json`.
 
+`notes` is optional user-facing text saved with custom presets. Exporting from the app writes all user presets as a JSON array and never includes built-in presets; importing accepts either that array or one legacy single-preset object.
+
 `output.strategy` distinguishes `fixedQuality` from `targetBytes`. Fixed quality applies one quality value and makes no byte promise. Target bytes measures every encoded candidate and returns the highest quality that fits the safety target. Final validation uses the hard target.
 
 `targetBytes` is literal bytes. The built-in 150KB preset stores `150000`; it does not use 153600 or an ambiguous binary unit. `safetyTargetBytes` must be positive and no greater than `targetBytes`.

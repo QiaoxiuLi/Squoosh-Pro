@@ -30,23 +30,31 @@ struct ContentView: View {
     private var toolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .navigation) {
             Button { model.chooseImages() } label: { Label("添加图片", systemImage: "photo.badge.plus") }
+                .labelStyle(.titleAndIcon)
                 .help("添加一张或多张图片")
                 .accessibilityIdentifier("toolbar.addImages")
             Button { model.chooseFolder() } label: { Label("添加文件夹", systemImage: "folder.badge.plus") }
+                .labelStyle(.titleAndIcon)
                 .help("添加文件夹")
                 .accessibilityIdentifier("toolbar.addFolder")
             Button { model.clear() } label: { Label("清空", systemImage: "trash") }
+                .labelStyle(.titleAndIcon)
                 .disabled(model.items.isEmpty || model.isRunning)
                 .accessibilityIdentifier("toolbar.clear")
         }
         ToolbarItemGroup(placement: .primaryAction) {
             if model.isRunning {
-                Button(model.isPaused ? "继续" : "暂停") { model.pauseOrResume() }
+                Button { model.pauseOrResume() } label: {
+                    Label(model.isPaused ? "继续" : "暂停", systemImage: model.isPaused ? "play.fill" : "pause.fill")
+                }
+                    .labelStyle(.titleAndIcon)
                     .accessibilityIdentifier("toolbar.pauseResume")
-                Button("取消") { model.cancel() }
+                Button { model.cancel() } label: { Label("取消", systemImage: "xmark.circle") }
+                    .labelStyle(.titleAndIcon)
                     .accessibilityIdentifier("toolbar.cancel")
             } else {
                 Button { model.startBatch() } label: { Label("开始压缩", systemImage: "play.fill") }
+                    .labelStyle(.titleAndIcon)
                     .buttonStyle(.borderedProminent)
                     .disabled(model.items.isEmpty)
                     .accessibilityIdentifier("toolbar.start")
@@ -162,24 +170,6 @@ private struct EmptyWorkspace: View {
                     }
                 }
 
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 10) {
-                        WorkflowStep(number: 1, title: "添加图片")
-                        Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-                        WorkflowStep(number: 2, title: "选择方案")
-                        Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-                        WorkflowStep(number: 3, title: "开始压缩")
-                    }
-                    VStack(alignment: .leading, spacing: 8) {
-                        WorkflowStep(number: 1, title: "添加图片")
-                        WorkflowStep(number: 2, title: "选择方案")
-                        WorkflowStep(number: 3, title: "开始压缩")
-                    }
-                }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-
                 Label("已选择“\(model.selectedPreset.name)”。添加图片后，点击右上角“开始压缩”。", systemImage: "checkmark.circle.fill")
                     .font(.callout)
                     .foregroundStyle(Color.accentColor)
@@ -199,15 +189,8 @@ private struct EmptyWorkspace: View {
 
     private var heroCopy: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("本地图片压缩")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
-            Text("拖入图片，清晰地完成压缩")
+            Text("Squoosh Pro")
                 .font(.system(size: 28, weight: .bold, design: .rounded))
-                .fixedSize(horizontal: false, vertical: true)
-            Text("选择图片和压缩方案，确认预览后开始处理。原图不会被修改。")
-                .font(.callout)
-                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 10) {
@@ -325,28 +308,18 @@ private struct PresetChoiceCard: View {
     }
 }
 
-private struct WorkflowStep: View {
-    let number: Int
-    let title: String
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text("\(number)")
-                .font(.caption.bold())
-                .foregroundStyle(.white)
-                .frame(width: 22, height: 22)
-                .background(Color.accentColor, in: Circle())
-            Text(title).font(.callout.weight(.medium))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
 private struct QueueList: View {
     @EnvironmentObject private var model: AppModel
+    @State private var searchText = ""
 
     private var selection: Binding<UUID?> {
         Binding(get: { model.selectedItemID }, set: { model.selectItem($0) })
+    }
+
+    private var filteredItems: [ImageQueueItem] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return model.items }
+        return model.items.filter { $0.url.lastPathComponent.localizedCaseInsensitiveContains(query) }
     }
 
     var body: some View {
@@ -356,8 +329,23 @@ private struct QueueList: View {
                 Spacer()
                 Text("\(model.items.count)").foregroundStyle(.secondary)
             }.padding(12)
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("搜索图片", text: $searchText)
+                    .textFieldStyle(.plain)
+                    .accessibilityIdentifier("queue.search")
+                if !searchText.isEmpty {
+                    Button("清除") { searchText = "" }
+                        .buttonStyle(.borderless)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 10)
+            .padding(.bottom, 10)
             Divider()
-            List(model.items, selection: selection) { item in
+            List(filteredItems, selection: selection) { item in
                 HStack(spacing: 10) {
                     Group {
                         if let thumbnail = item.thumbnail { Image(nsImage: thumbnail).resizable().scaledToFill() }
@@ -372,8 +360,15 @@ private struct QueueList: View {
                             StatusIcon(state: item.state)
                             Text(statusText(item)).font(.caption).foregroundStyle(item.state == .failed ? Color.red : Color.secondary).lineLimit(1)
                         }
+                        if model.cachedItemIDs.contains(item.id) {
+                            Label("已缓存", systemImage: "bolt.fill")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(Color.accentColor)
+                        }
                     }
                 }
+                .contentShape(Rectangle())
+                .onTapGesture { model.selectItem(item.id) }
                 .tag(item.id)
                 .accessibilityIdentifier("queue.item.\(item.id.uuidString)")
                 .accessibilityLabel("\(item.url.lastPathComponent)，\(statusText(item))")

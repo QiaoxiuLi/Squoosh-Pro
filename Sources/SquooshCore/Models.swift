@@ -130,6 +130,7 @@ public struct CompressionPreset: Codable, Equatable, Identifiable, Sendable {
     public var schemaVersion: Int
     public var id: String
     public var name: String
+    public var notes: String?
     public var kind: String
     public var output: OutputOptions
     public var resize: ResizeOptions
@@ -139,10 +140,11 @@ public struct CompressionPreset: Codable, Equatable, Identifiable, Sendable {
     public var naming: NamingOptions
     public var formatOptions: [String: Double]
 
-    public init(schemaVersion: Int = 1, id: String, name: String, kind: String = "user", output: OutputOptions, resize: ResizeOptions, metadata: MetadataOptions = .init(), color: ColorOptions = .init(), alpha: AlphaOptions = .init(), naming: NamingOptions = .init(), formatOptions: [String: Double] = [:]) {
+    public init(schemaVersion: Int = 1, id: String, name: String, notes: String? = nil, kind: String = "user", output: OutputOptions, resize: ResizeOptions, metadata: MetadataOptions = .init(), color: ColorOptions = .init(), alpha: AlphaOptions = .init(), naming: NamingOptions = .init(), formatOptions: [String: Double] = [:]) {
         self.schemaVersion = schemaVersion
         self.id = id
         self.name = name
+        self.notes = notes
         self.kind = kind
         self.output = output
         self.resize = resize
@@ -157,7 +159,7 @@ public struct CompressionPreset: Codable, Equatable, Identifiable, Sendable {
 public extension CompressionPreset {
     static let smart = CompressionPreset(id: "system.smart", name: "智能推荐", kind: "system", output: .init(format: .automatic, strategy: .fixedQuality, quality: 78), resize: .init(mode: .longestEdge, longestEdge: 1920))
 
-    static let websiteJPEG = CompressionPreset(id: "system.website-jpeg", name: "网站通用 JPEG", kind: "system", output: .init(format: .mozjpeg, strategy: .fixedQuality, quality: 75), resize: .init(mode: .longestEdge, longestEdge: 1920), formatOptions: ["progressive": 1, "optimizeCoding": 1, "arithmetic": 0])
+    static let websiteJPEG = CompressionPreset(id: "system.website-jpeg", name: "JPEG（JPG）", kind: "system", output: .init(format: .mozjpeg, strategy: .fixedQuality, quality: 75), resize: .init(mode: .longestEdge, longestEdge: 1920), formatOptions: ["progressive": 1, "optimizeCoding": 1, "arithmetic": 0])
 
     static let webJPEG150KB = CompressionPreset(id: "system.web-jpeg-150kb", name: "网页 JPEG ≤150KB", kind: "system", output: .init(format: .mozjpeg, strategy: .targetBytes, quality: 75, targetBytes: 150_000, safetyTargetBytes: 145_000, minimumQuality: 35, maximumSearchAttempts: 8), resize: .init(mode: .adaptiveWidth, candidateWidths: [1000, 960, 920]), formatOptions: ["progressive": 1, "optimizeCoding": 1, "arithmetic": 0])
 

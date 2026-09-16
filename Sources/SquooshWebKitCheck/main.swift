@@ -39,6 +39,43 @@ struct SquooshWebKitCheck {
                 print("PASS WKWebView \(format.rawValue) encode, signature, decode, and dimensions")
             }
 
+            let progressiveJPEG = try await host.encodeRGBA(
+                rgba,
+                width: width,
+                height: height,
+                format: .mozjpeg,
+                options: ["quality": 75, "progressive": 1, "baseline": 0, "optimizeCoding": 1],
+                requestID: UUID()
+            )
+            let baselineJPEG = try await host.encodeRGBA(
+                rgba,
+                width: width,
+                height: height,
+                format: .mozjpeg,
+                options: ["quality": 75, "progressive": 0, "baseline": 1, "optimizeCoding": 1],
+                requestID: UUID()
+            )
+            guard jpegFrameMarker(in: progressiveJPEG) == 0xc2,
+                  jpegFrameMarker(in: baselineJPEG) == 0xc0 else {
+                throw SquooshProError.verifyFailed
+            }
+            try writer.verify(data: progressiveJPEG, expectedFormat: .mozjpeg, expectedDimensions: .init(width: width, height: height), targetBytes: nil)
+            try writer.verify(data: baselineJPEG, expectedFormat: .mozjpeg, expectedDimensions: .init(width: width, height: height), targetBytes: nil)
+            print("PASS progressive and baseline JPEG settings changed the encoded frame type")
+
+            let unoptimizedJPEG = try await host.encodeRGBA(
+                rgba,
+                width: width,
+                height: height,
+                format: .mozjpeg,
+                options: ["quality": 75, "progressive": 0, "baseline": 1, "optimizeCoding": 0],
+                requestID: UUID()
+            )
+            guard baselineJPEG != unoptimizedJPEG, baselineJPEG.count <= unoptimizedJPEG.count else {
+                throw SquooshProError.verifyFailed
+            }
+            print("PASS MozJPEG coding optimization reduced the fixture output")
+
             let cancellationRequest = UUID()
             let large = fixture(width: 2400, height: 1800)
             let task = Task {
@@ -108,5 +145,29 @@ struct SquooshWebKitCheck {
         case .avif: return ["quality": 50, "speed": 8]
         case .automatic: return [:]
         }
+    }
+
+    private static func jpegFrameMarker(in data: Data) -> UInt8? {
+        let bytes = [UInt8](data)
+        guard bytes.count >= 4, bytes[0] == 0xff, bytes[1] == 0xd8 else { return nil }
+        var index = 2
+        while index + 3 < bytes.count {
+            guard bytes[index] == 0xff else {
+                index += 1
+                continue
+            }
+            while index < bytes.count, bytes[index] == 0xff { index += 1 }
+            guard index < bytes.count else { return nil }
+            let marker = bytes[index]
+            index += 1
+            if marker == 0xc0 || marker == 0xc2 { return marker }
+            if marker == 0xda || marker == 0xd9 { return nil }
+            if marker == 0x01 || (0xd0...0xd7).contains(marker) { continue }
+            guard index + 1 < bytes.count else { return nil }
+            let length = Int(bytes[index]) << 8 | Int(bytes[index + 1])
+            guard length >= 2, index + length <= bytes.count else { return nil }
+            index += length
+        }
+        return nil
     }
 }

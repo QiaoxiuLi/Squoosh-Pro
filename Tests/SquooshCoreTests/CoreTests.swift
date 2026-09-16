@@ -13,6 +13,34 @@ final class CoreTests: XCTestCase {
         XCTAssertThrowsError(try PresetValidator.validate(preset))
     }
 
+    func testFixedQualityDoesNotValidateUnusedMinimumQuality() throws {
+        var preset = CompressionPreset.websiteJPEG
+        preset.output.quality = 10
+        preset.output.minimumQuality = 35
+        XCTAssertNoThrow(try PresetValidator.validate(preset))
+    }
+
+    func testTargetSizeRejectsMinimumQualityAboveInitialQuality() {
+        var preset = CompressionPreset.webJPEG150KB
+        preset.output.quality = 20
+        preset.output.minimumQuality = 35
+        XCTAssertThrowsError(try PresetValidator.validate(preset)) { error in
+            XCTAssertEqual(error.localizedDescription, "预设无效：最低质量不能高于初始质量")
+        }
+    }
+
+    func testPresetNotesRoundTripAndLegacyDecode() throws {
+        var preset = CompressionPreset.websiteJPEG
+        preset.notes = "商品详情页图片"
+        let encoded = try PresetValidator.encode(preset)
+        XCTAssertEqual(try PresetValidator.decode(encoded).notes, "商品详情页图片")
+
+        var legacyObject = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        legacyObject.removeValue(forKey: "notes")
+        let legacyData = try JSONSerialization.data(withJSONObject: legacyObject)
+        XCTAssertNil(try PresetValidator.decode(legacyData).notes)
+    }
+
     func testTargetSearchChoosesHighestMeasuredQuality() throws {
         let result = try TargetSizeSearch.highestQuality(initialQuality: 75, minimumQuality: 35, targetBytes: 145, maximumAttempts: 8) { quality in
             Data(repeating: 0, count: quality * 2)

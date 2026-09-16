@@ -49,6 +49,61 @@ private struct ResumeContext {
     let access: SecurityScopeAccess
 }
 
+private struct PreviewCacheEntry {
+    let result: EncodedImageResult
+    let fingerprint: SourceFingerprint
+    let preset: CompressionPreset
+    var lastAccess: Date
+}
+
+private struct PreviewResultCache {
+    private(set) var entries: [UUID: PreviewCacheEntry] = [:]
+    private let maximumEntryCount = 24
+    private let maximumByteCount = 128 * 1_000_000
+
+    var itemIDs: Set<UUID> { Set(entries.keys) }
+
+    mutating func result(
+        for itemID: UUID,
+        preset: CompressionPreset,
+        fingerprint: SourceFingerprint
+    ) -> EncodedImageResult? {
+        guard var entry = entries[itemID], entry.preset == preset, entry.fingerprint == fingerprint else {
+            entries.removeValue(forKey: itemID)
+            return nil
+        }
+        entry.lastAccess = Date()
+        entries[itemID] = entry
+        return entry.result
+    }
+
+    mutating func insert(
+        _ result: EncodedImageResult,
+        for itemID: UUID,
+        preset: CompressionPreset,
+        fingerprint: SourceFingerprint
+    ) {
+        guard result.data.count <= maximumByteCount else { return }
+        entries[itemID] = PreviewCacheEntry(result: result, fingerprint: fingerprint, preset: preset, lastAccess: Date())
+        trimIfNeeded()
+    }
+
+    mutating func remove(for itemID: UUID) {
+        entries.removeValue(forKey: itemID)
+    }
+
+    mutating func removeAll() {
+        entries.removeAll(keepingCapacity: false)
+    }
+
+    private mutating func trimIfNeeded() {
+        while entries.count > maximumEntryCount || entries.values.reduce(0, { $0 + $1.result.data.count }) > maximumByteCount {
+            guard let oldest = entries.min(by: { $0.value.lastAccess < $1.value.lastAccess })?.key else { return }
+            entries.removeValue(forKey: oldest)
+        }
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     private let logger = Logger(subsystem: "com.qiaoxiuli.squoosh-pro", category: "AppModel")
@@ -78,6 +133,9 @@ final class AppModel: ObservableObject {
     @Published var workerStatus = "正在准备图片编码器"
     @Published var recoveredJobCount = 0
     @Published var recoveryMessage: String?
+    @Published private(set) var cachedItemIDs: Set<UUID> = []
+    @Published private(set) var hardwareAccelerationEnabled: Bool
+    @Published private(set) var hardwareAccelerationStatus: String
 
     let systemPresets = CompressionPreset.builtIns
     private let processor = ImageProcessor()
@@ -91,11 +149,22 @@ final class AppModel: ObservableObject {
     private var store: AtomicJSONStore?
     private var recoveryStore: SecurityScopedRecoveryStore?
     private var outputParentBookmark: Data?
+    private var previewCache = PreviewResultCache()
+    private var previewRenderer: PreviewRenderer
+    private var startupGuardTask: Task<Void, Never>?
+
+    private static let hardwareAccelerationPreferenceKey = "preview.hardwareAccelerationEnabled"
+    private static let hardwareAccelerationStartupMarkerKey = "preview.hardwareAccelerationStartupInProgress"
 
     init() {
+        let acceleration = Self.makeStartupPreviewRenderer()
+        hardwareAccelerationEnabled = acceleration.enabled
+        hardwareAccelerationStatus = acceleration.status
+        previewRenderer = acceleration.renderer
         store = try? AtomicJSONStore()
         if let store { recoveryStore = SecurityScopedRecoveryStore(store: store) }
         reloadPersistence()
+        if acceleration.enabled { armHardwareAccelerationStartupGuard() }
         Task {
             do {
                 let codecs = try await codecHost.capabilities()
@@ -117,7 +186,7 @@ final class AppModel: ObservableObject {
     func selectPreset(_ preset: CompressionPreset) {
         guard !isRunning else { return }
         selectedPreset = preset
-        schedulePreview()
+        settingsDidChange()
     }
 
     func chooseImages() {
@@ -170,13 +239,20 @@ final class AppModel: ObservableObject {
 
     func selectItem(_ id: UUID?) {
         selectedItemID = id
-        sourcePreview = id.flatMap { identifier in items.first(where: { $0.id == identifier }).flatMap { NSImage(contentsOf: $0.url) } }
+        sourcePreview = nil
+        outputPreview = nil
+        previewBytes = nil
+        previewDimensions = nil
+        previewQuality = nil
+        previewError = nil
         schedulePreview()
     }
 
     func clear() {
         guard !isRunning else { return }
         previewTask?.cancel()
+        clearPreviewCache()
+        isPreviewing = false
         items.removeAll()
         selectedItemID = nil
         sourcePreview = nil
@@ -187,33 +263,91 @@ final class AppModel: ObservableObject {
         failedCount = 0
     }
 
+    func settingsDidChange() {
+        guard !isRunning else { return }
+        clearPreviewCache()
+        schedulePreview()
+    }
+
+    func setHardwareAccelerationEnabled(_ enabled: Bool) {
+        guard !isRunning else { return }
+        startupGuardTask?.cancel()
+        let defaults = UserDefaults.standard
+        defaults.set(enabled, forKey: Self.hardwareAccelerationPreferenceKey)
+        defaults.set(false, forKey: Self.hardwareAccelerationStartupMarkerKey)
+
+        if enabled {
+            defaults.set(true, forKey: Self.hardwareAccelerationStartupMarkerKey)
+            let renderer = PreviewRenderer(requestHardwareAcceleration: true)
+            if renderer.usesHardwareAcceleration {
+                previewRenderer = renderer
+                hardwareAccelerationEnabled = true
+                hardwareAccelerationStatus = "使用此 Mac 的图形处理器加速预览"
+                armHardwareAccelerationStartupGuard()
+            } else {
+                previewRenderer = PreviewRenderer(requestHardwareAcceleration: false)
+                hardwareAccelerationEnabled = false
+                hardwareAccelerationStatus = "此 Mac 不支持图形加速，已使用兼容模式"
+                defaults.set(false, forKey: Self.hardwareAccelerationPreferenceKey)
+                defaults.set(false, forKey: Self.hardwareAccelerationStartupMarkerKey)
+            }
+        } else {
+            previewRenderer = PreviewRenderer(requestHardwareAcceleration: false)
+            hardwareAccelerationEnabled = false
+            hardwareAccelerationStatus = "使用兼容模式渲染预览"
+        }
+        settingsDidChange()
+    }
+
     func schedulePreview() {
         previewTask?.cancel()
         guard !isRunning else {
             isPreviewing = false
             return
         }
-        guard let url = selectedItem?.url else { return }
+        guard let item = selectedItem else {
+            isPreviewing = false
+            return
+        }
+        let itemID = item.id
+        let url = item.url
         let preset = selectedPreset
+        let renderer = previewRenderer
         isPreviewing = true
         previewError = nil
         previewTask = Task {
-            try? await Task.sleep(nanoseconds: 250_000_000)
+            try? await Task.sleep(nanoseconds: 150_000_000)
             guard !Task.isCancelled else { return }
             do {
-                let result = try await encode(url: url, preset: preset)
+                async let sourceImage = Task.detached(priority: .userInitiated) { try renderer.render(url: url) }.value
+                async let sourceFingerprint = Task.detached(priority: .utility) { try SourceFingerprint.capture(url: url) }.value
+                let renderedSource = try await sourceImage
+                guard !Task.isCancelled, selectedItemID == itemID else { return }
+                sourcePreview = NSImage(cgImage: renderedSource, size: .zero)
+
+                let fingerprint = try await sourceFingerprint
                 guard !Task.isCancelled else { return }
-                outputPreview = NSImage(data: result.data)
+                let result: EncodedImageResult
+                if let cached = cachedResult(for: itemID, preset: preset, fingerprint: fingerprint) {
+                    result = cached
+                } else {
+                    result = try await encode(url: url, preset: preset)
+                    try await Task.detached(priority: .utility) { try fingerprint.verifyUnchanged() }.value
+                    cache(result, for: itemID, preset: preset, fingerprint: fingerprint)
+                }
+                let renderedOutput = try await Task.detached(priority: .userInitiated) { try renderer.render(data: result.data) }.value
+                guard !Task.isCancelled, selectedItemID == itemID, selectedPreset == preset else { return }
+                outputPreview = NSImage(cgImage: renderedOutput, size: .zero)
                 previewBytes = result.data.count
                 previewDimensions = result.dimensions
                 previewQuality = result.quality
-                if outputPreview == nil { previewError = "已编码，但系统预览无法显示该格式" }
             } catch is CancellationError {
             } catch {
+                guard selectedItemID == itemID, selectedPreset == preset else { return }
                 previewError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 outputPreview = nil
             }
-            isPreviewing = false
+            if selectedItemID == itemID, selectedPreset == preset { isPreviewing = false }
         }
     }
 
@@ -249,6 +383,9 @@ final class AppModel: ObservableObject {
     func shutdown() {
         previewTask?.cancel()
         batchTask?.cancel()
+        startupGuardTask?.cancel()
+        UserDefaults.standard.set(false, forKey: Self.hardwareAccelerationStartupMarkerKey)
+        clearPreviewCache()
         Task {
             await codecHost.shutdown()
             await nativeCodecHost.shutdown()
@@ -325,10 +462,12 @@ final class AppModel: ObservableObject {
         NSWorkspace.shared.activateFileViewerSelecting([directory])
     }
 
-    func saveUserPreset(name: String) throws {
+    func saveUserPreset(name: String, notes: String = "") throws {
         var copy = selectedPreset
         copy.id = "user.\(UUID().uuidString.lowercased())"
         copy.name = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "自定义预设" : name
+        let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        copy.notes = trimmedNotes.isEmpty ? nil : trimmedNotes
         copy.kind = "user"
         try PresetValidator.validate(copy)
         try store?.save(copy, relativePath: "Presets/\(copy.id).json")
@@ -343,19 +482,34 @@ final class AppModel: ObservableObject {
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [.json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        var preset = try PresetValidator.decode(Data(contentsOf: url))
-        preset.id = "user.\(UUID().uuidString.lowercased())"
-        preset.kind = "user"
-        try store?.save(preset, relativePath: "Presets/\(preset.id).json")
+        let data = try Data(contentsOf: url)
+        let presets: [CompressionPreset]
+        if let batch = try? JSONDecoder().decode([CompressionPreset].self, from: data) {
+            try batch.forEach(PresetValidator.validate)
+            presets = batch
+        } else {
+            presets = [try PresetValidator.decode(data)]
+        }
+        for imported in presets {
+            var preset = imported
+            preset.id = "user.\(UUID().uuidString.lowercased())"
+            preset.kind = "user"
+            try store?.save(preset, relativePath: "Presets/\(preset.id).json")
+        }
         reloadPersistence()
     }
 
-    func exportSelectedPreset() throws {
+    func exportUserPresets() throws {
+        guard !userPresets.isEmpty else {
+            throw SquooshProError.invalidPreset("还没有可导出的自定义预设")
+        }
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = "\(PathSafety.sanitizedFileStem(selectedPreset.name)).json"
+        panel.nameFieldStringValue = "Squoosh-Pro-我的预设.json"
         panel.allowedContentTypes = [.json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        try PresetValidator.encode(selectedPreset).write(to: url, options: .withoutOverwriting)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        try encoder.encode(userPresets).write(to: url, options: .withoutOverwriting)
     }
 
     private func runBatch(retryFailedOnly: Bool, resume: ResumeContext? = nil) async {
@@ -444,10 +598,15 @@ final class AppModel: ObservableObject {
                 update(index, manifest: &manifest, recovery: &recovery, state: .decoding)
                 update(index, manifest: &manifest, recovery: &recovery, state: .transforming)
                 update(index, manifest: &manifest, recovery: &recovery, state: .encoding)
-                let result = try await encode(url: url, preset: batchPreset)
+                let result: EncodedImageResult
+                if let cached = cachedResult(for: items[index].id, preset: batchPreset, fingerprint: fingerprint) {
+                    result = cached
+                } else {
+                    result = try await encode(url: url, preset: batchPreset)
+                }
                 update(index, manifest: &manifest, recovery: &recovery, state: .verifying)
                 try writer.verify(data: result.data, expectedFormat: result.format, expectedDimensions: result.dimensions, targetBytes: batchPreset.output.strategy == .targetBytes ? batchPreset.output.targetBytes : nil)
-                try fingerprint.verifyUnchanged()
+                try await Task.detached(priority: .utility) { try fingerprint.verifyUnchanged() }.value
                 update(index, manifest: &manifest, recovery: &recovery, state: .committing)
                 var outputURL = writer.nextOutputURL(directory: outputDirectory, sourceName: url.lastPathComponent, preset: batchPreset, format: result.format)
                 while true {
@@ -463,6 +622,7 @@ final class AppModel: ObservableObject {
                 manifest.items[index].outputFileName = outputURL.lastPathComponent
                 manifest.items[index].outputBytes = Int64(result.data.count)
                 update(index, manifest: &manifest, recovery: &recovery, state: .completed)
+                removeCachedResult(for: items[index].id)
                 completedCount += 1
             } catch {
                 let wasCancelled = Task.isCancelled || (error as? SquooshProError) == .cancelled
@@ -507,11 +667,81 @@ final class AppModel: ObservableObject {
         isPaused = false
         cancelRequested = false
         currentWorkerRequest = nil
+        clearPreviewCache()
         reloadPersistence()
+    }
+
+    private func cachedResult(
+        for itemID: UUID,
+        preset: CompressionPreset,
+        fingerprint: SourceFingerprint
+    ) -> EncodedImageResult? {
+        let result = previewCache.result(for: itemID, preset: preset, fingerprint: fingerprint)
+        cachedItemIDs = previewCache.itemIDs
+        return result
+    }
+
+    private func cache(
+        _ result: EncodedImageResult,
+        for itemID: UUID,
+        preset: CompressionPreset,
+        fingerprint: SourceFingerprint
+    ) {
+        previewCache.insert(result, for: itemID, preset: preset, fingerprint: fingerprint)
+        cachedItemIDs = previewCache.itemIDs
+    }
+
+    private func removeCachedResult(for itemID: UUID) {
+        previewCache.remove(for: itemID)
+        cachedItemIDs = previewCache.itemIDs
+    }
+
+    private func clearPreviewCache() {
+        previewCache.removeAll()
+        cachedItemIDs = []
+    }
+
+    private static func makeStartupPreviewRenderer() -> (renderer: PreviewRenderer, enabled: Bool, status: String) {
+        let defaults = UserDefaults.standard
+        let requested = (defaults.object(forKey: hardwareAccelerationPreferenceKey) as? Bool) ?? true
+        if requested, defaults.bool(forKey: hardwareAccelerationStartupMarkerKey) {
+            defaults.set(false, forKey: hardwareAccelerationPreferenceKey)
+            defaults.set(false, forKey: hardwareAccelerationStartupMarkerKey)
+            return (
+                PreviewRenderer(requestHardwareAcceleration: false),
+                false,
+                "上次启动未正常完成，已自动关闭图形加速"
+            )
+        }
+
+        guard requested else {
+            return (PreviewRenderer(requestHardwareAcceleration: false), false, "使用兼容模式渲染预览")
+        }
+
+        defaults.set(true, forKey: hardwareAccelerationStartupMarkerKey)
+        let renderer = PreviewRenderer(requestHardwareAcceleration: true)
+        guard renderer.usesHardwareAcceleration else {
+            defaults.set(false, forKey: hardwareAccelerationPreferenceKey)
+            defaults.set(false, forKey: hardwareAccelerationStartupMarkerKey)
+            return (PreviewRenderer(requestHardwareAcceleration: false), false, "此 Mac 不支持图形加速，已使用兼容模式")
+        }
+        return (renderer, true, "使用此 Mac 的图形处理器加速预览")
+    }
+
+    private func armHardwareAccelerationStartupGuard() {
+        startupGuardTask?.cancel()
+        startupGuardTask = Task {
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            guard !Task.isCancelled else { return }
+            UserDefaults.standard.set(false, forKey: Self.hardwareAccelerationStartupMarkerKey)
+        }
     }
 
     private func encode(url: URL, preset: CompressionPreset) async throws -> EncodedImageResult {
         let processor = self.processor
+        if preset.output.format == .mozjpeg {
+            return try await encodeJPEG(url: url, preset: preset)
+        }
         if preset.output.format == .avif, processor.supportsNativeEncoding(.avif) {
             workerStatus = "所有图片格式均可使用"
             let request = UUID()
@@ -553,6 +783,140 @@ final class AppModel: ObservableObject {
             throw SquooshProError.workerCrashed
         }
         return try await Task.detached { try processor.encode(url: url, preset: preset) }.value
+    }
+
+    private func encodeJPEG(url: URL, preset: CompressionPreset) async throws -> EncodedImageResult {
+        try PresetValidator.validate(preset)
+        let widths: [Int?]
+        if preset.output.strategy == .targetBytes {
+            let candidates = preset.resize.candidateWidths.isEmpty ? [preset.resize.width].compactMap { $0 } : preset.resize.candidateWidths
+            widths = candidates.isEmpty ? [nil] : candidates.map(Optional.some)
+        } else {
+            widths = [nil]
+        }
+
+        for width in widths {
+            try Task.checkCancellation()
+            let processor = self.processor
+            let decoded = try await Task.detached(priority: .userInitiated) {
+                try processor.decode(
+                    url: url,
+                    resize: preset.resize,
+                    overrideWidth: width,
+                    jpegBackground: preset.alpha.jpegBackground,
+                    flattenAlpha: true
+                )
+            }.value
+            let rgba = try await Task.detached(priority: .userInitiated) {
+                try processor.rgbaBytes(from: decoded.image)
+            }.value
+            let dimensions = ImageDimensions(width: decoded.image.width, height: decoded.image.height)
+
+            if preset.output.strategy == .targetBytes {
+                let target = preset.output.targetBytes ?? 0
+                let safetyTarget = min(preset.output.safetyTargetBytes ?? target, target)
+                if let candidate = try await searchJPEGQuality(
+                    rgba: rgba,
+                    width: dimensions.width,
+                    height: dimensions.height,
+                    preset: preset,
+                    targetBytes: safetyTarget
+                ), candidate.data.count <= target {
+                    return EncodedImageResult(data: candidate.data, format: .mozjpeg, dimensions: dimensions, quality: candidate.quality)
+                }
+            } else {
+                let data = try await encodeJPEGRGBA(
+                    rgba,
+                    width: dimensions.width,
+                    height: dimensions.height,
+                    quality: preset.output.quality,
+                    formatOptions: preset.formatOptions
+                )
+                return EncodedImageResult(data: data, format: .mozjpeg, dimensions: dimensions, quality: preset.output.quality)
+            }
+        }
+        throw SquooshProError.targetNotMet
+    }
+
+    private func searchJPEGQuality(
+        rgba: Data,
+        width: Int,
+        height: Int,
+        preset: CompressionPreset,
+        targetBytes: Int
+    ) async throws -> (data: Data, quality: Int)? {
+        var attempts = 0
+        var measured: [Int: Data] = [:]
+        var best: (data: Data, quality: Int)?
+
+        func measure(_ quality: Int) async throws -> Data {
+            if let cached = measured[quality] { return cached }
+            guard attempts < preset.output.maximumSearchAttempts else { throw SquooshProError.targetNotMet }
+            try Task.checkCancellation()
+            attempts += 1
+            let data = try await encodeJPEGRGBA(
+                rgba,
+                width: width,
+                height: height,
+                quality: quality,
+                formatOptions: preset.formatOptions
+            )
+            measured[quality] = data
+            if data.count <= targetBytes, quality > (best?.quality ?? -1) { best = (data, quality) }
+            return data
+        }
+
+        let initialQuality = preset.output.quality
+        let initial = try await measure(initialQuality)
+        var low = preset.output.minimumQuality
+        var high = initial.count > targetBytes ? initialQuality - 1 : 100
+        while low <= high, attempts < preset.output.maximumSearchAttempts {
+            let quality = (low + high) / 2
+            let data = try await measure(quality)
+            if data.count <= targetBytes {
+                low = quality + 1
+            } else {
+                high = quality - 1
+            }
+        }
+        if best == nil, attempts < preset.output.maximumSearchAttempts {
+            _ = try await measure(preset.output.minimumQuality)
+        }
+        return best
+    }
+
+    private func encodeJPEGRGBA(
+        _ rgba: Data,
+        width: Int,
+        height: Int,
+        quality: Int,
+        formatOptions: [String: Double]
+    ) async throws -> Data {
+        let options = formatOptions.merging(["quality": Double(quality)]) { current, _ in current }
+        for attempt in 0..<2 {
+            let request = UUID()
+            currentWorkerRequest = request
+            do {
+                let data = try await codecHost.encodeRGBA(
+                    rgba,
+                    width: width,
+                    height: height,
+                    format: .mozjpeg,
+                    options: options,
+                    requestID: request
+                )
+                currentWorkerRequest = nil
+                return data
+            } catch let error as SquooshProError where error == .workerCrashed && attempt == 0 && !Task.isCancelled {
+                currentWorkerRequest = nil
+                workerStatus = "编码器已恢复，正在重试当前图片"
+                try await Task.sleep(nanoseconds: 250_000_000)
+            } catch {
+                currentWorkerRequest = nil
+                throw error
+            }
+        }
+        throw SquooshProError.workerCrashed
     }
 
     private func update(_ index: Int, manifest: inout JobManifest, recovery: inout JobRecoveryRecord?, state: FileState) {

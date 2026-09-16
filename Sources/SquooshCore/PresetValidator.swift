@@ -7,13 +7,17 @@ public enum PresetValidator {
               !preset.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw SquooshProError.invalidPreset("ID 和名称不能为空")
         }
-        guard (0...100).contains(preset.output.quality),
-              (0...100).contains(preset.output.minimumQuality),
-              preset.output.minimumQuality <= preset.output.quality else {
-            throw SquooshProError.invalidPreset("质量范围必须为 0...100")
+        guard (0...100).contains(preset.output.quality) else {
+            throw SquooshProError.invalidPreset("质量必须在 0 到 100 之间")
         }
         guard (1...16).contains(preset.output.maximumSearchAttempts) else { throw SquooshProError.invalidPreset("搜索次数必须为 1...16") }
         if preset.output.strategy == .targetBytes {
+            guard (0...100).contains(preset.output.minimumQuality) else {
+                throw SquooshProError.invalidPreset("最低质量必须在 0 到 100 之间")
+            }
+            guard preset.output.minimumQuality <= preset.output.quality else {
+                throw SquooshProError.invalidPreset("最低质量不能高于初始质量")
+            }
             guard let target = preset.output.targetBytes, target > 0 else { throw SquooshProError.invalidPreset("严格大小模式需要正数 targetBytes") }
             let safety = preset.output.safetyTargetBytes ?? target
             guard safety > 0, safety <= target else { throw SquooshProError.invalidPreset("safetyTargetBytes 必须大于 0 且不超过 targetBytes") }

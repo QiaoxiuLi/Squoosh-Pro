@@ -3,7 +3,6 @@ import SwiftUI
 
 struct PresetsView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var name = "我的压缩预设"
     @State private var message: String?
 
     var body: some View {
@@ -15,13 +14,12 @@ struct PresetsView: View {
                 if model.userPresets.isEmpty { Text("尚未保存自定义预设").foregroundStyle(.secondary) }
                 ForEach(model.userPresets) { preset in presetRow(preset) }
             }
-            Section("保存与交换") {
-                TextField("预设名称", text: $name).accessibilityIdentifier("presets.name")
+            Section("导入与导出") {
                 ViewThatFits(in: .horizontal) {
                     HStack { presetActionButtons }
                     VStack(alignment: .leading) { presetActionButtons }
                 }
-                if let message { Text(message).font(.caption).foregroundStyle(.secondary) }
+                if let message { Text(message).font(.callout).foregroundStyle(.secondary) }
             }
         }
         .formStyle(.grouped)
@@ -39,12 +37,10 @@ struct PresetsView: View {
     }
 
     @ViewBuilder private var presetActionButtons: some View {
-        Button("保存当前设置") {
-            do { try model.saveUserPreset(name: name); message = "已保存" }
-            catch { message = error.localizedDescription }
-        }.accessibilityIdentifier("presets.save")
-        Button("导入 JSON…") { do { try model.importPreset(); message = "已导入" } catch { message = error.localizedDescription } }
-        Button("导出当前预设…") { do { try model.exportSelectedPreset(); message = "已导出" } catch { message = error.localizedDescription } }
+        Button("导入预设…") { do { try model.importPreset(); message = "已导入" } catch { message = error.localizedDescription } }
+        Button("导出我的预设…") { do { try model.exportUserPresets(); message = "已导出全部自定义预设" } catch { message = error.localizedDescription } }
+            .disabled(model.userPresets.isEmpty)
+            .accessibilityIdentifier("presets.exportUserPresets")
     }
 
     private func presetDescription(_ preset: CompressionPreset) -> some View {
@@ -53,6 +49,9 @@ struct PresetsView: View {
             Text("\(preset.output.format.displayName) · \(preset.output.strategy == .targetBytes ? "严格大小" : "固定质量")")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if let notes = preset.notes, !notes.isEmpty {
+                Text(notes).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
         }
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -139,6 +138,14 @@ struct ApplicationSettingsView: View {
             Section("文件夹") {
                 Toggle("添加文件夹时包含子文件夹", isOn: $model.recursiveFolders).accessibilityIdentifier("appSettings.recursive")
             }
+            Section("性能") {
+                Toggle("硬件加速预览", isOn: hardwareAcceleration)
+                    .accessibilityIdentifier("appSettings.hardwareAcceleration")
+                Text(model.hardwareAccelerationStatus)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Section("隐私与安全") {
                 Label("图片只在本机处理，原图不会被修改", systemImage: "lock.shield")
                     .fixedSize(horizontal: false, vertical: true)
@@ -157,5 +164,12 @@ struct ApplicationSettingsView: View {
         }
         .formStyle(.grouped)
         .navigationTitle("设置")
+    }
+
+    private var hardwareAcceleration: Binding<Bool> {
+        Binding(
+            get: { model.hardwareAccelerationEnabled },
+            set: { model.setHardwareAccelerationEnabled($0) }
+        )
     }
 }

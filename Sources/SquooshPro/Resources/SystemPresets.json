@@ -1,6 +1,6 @@
 [
   { "id": "system.smart", "name": "智能推荐" },
-  { "id": "system.website-jpeg", "name": "网站通用 JPEG" },
+  { "id": "system.website-jpeg", "name": "JPEG（JPG）" },
   { "id": "system.web-jpeg-150kb", "name": "网页 JPEG ≤150KB" },
   { "id": "system.lossless-png", "name": "无损 PNG" },
   { "id": "system.modern-webp", "name": "现代网站 WebP" },

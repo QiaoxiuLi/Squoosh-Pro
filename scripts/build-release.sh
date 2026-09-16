@@ -78,7 +78,7 @@ xcrun lipo -info "$APP_PATH/Contents/Helpers/SquooshNativeCodecWorker"
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
 mkdir -p "$ARTIFACT_DIR"
-ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
+ditto -c -k --norsrc --keepParent "$APP_PATH" "$ZIP_PATH"
 (
   cd "$ARTIFACT_DIR"
   shasum -a 256 "$ZIP_NAME" > "$ZIP_NAME.sha256"
