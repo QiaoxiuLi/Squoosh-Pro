@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qiaoxiuli.github.io/squoosh-pro/contracts/job-report.schema.json",
+  "title": "Squoosh Pro Job Report",
+  "type": "object",
+  "required": ["schemaVersion", "jobID", "createdAt", "state", "presetID", "outputDirectoryName", "items"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "jobID": { "type": "string", "format": "uuid" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "state": { "enum": ["draft", "ready", "running", "pausing", "paused", "cancelling", "cancelled", "completed", "completedWithErrors", "failed"] },
+    "presetID": { "type": "string" },
+    "outputDirectoryName": { "type": "string" },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["itemID", "sourceFileName", "state", "inputBytes"],
+        "properties": {
+          "itemID": { "type": "string", "format": "uuid" },
+          "sourceFileName": { "type": "string" },
+          "state": { "enum": ["queued", "reading", "decoding", "transforming", "encoding", "verifying", "committing", "completed", "failed", "cancelled"] },
+          "inputBytes": { "type": "integer", "minimum": 0 },
+          "outputFileName": { "type": ["string", "null"] },
+          "outputBytes": { "type": ["integer", "null"], "minimum": 0 },
+          "errorCode": { "type": ["string", "null"] }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qiaoxiuli.github.io/squoosh-pro/contracts/codec-response.schema.json",
+  "title": "Squoosh Pro Codec Response",
+  "type": "object",
+  "required": ["schemaVersion", "requestID", "ok"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "requestID": { "type": "string" },
+    "ok": { "type": "boolean" },
+    "byteLength": { "type": "integer", "minimum": 0 },
+    "mimeType": { "enum": ["image/jpeg", "image/png", "image/webp", "image/avif"] },
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "enum": ["invalidRequest", "unsupportedFormat", "encodeFailed", "cancelled", "workerCrashed", "memoryLimit", "unknown"] },
+        "message": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

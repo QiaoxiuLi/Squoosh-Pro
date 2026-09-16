@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qiaoxiuli.github.io/squoosh-pro/contracts/preset.schema.json",
+  "title": "Squoosh Pro Preset",
+  "type": "object",
+  "required": ["schemaVersion", "id", "name", "kind", "output", "resize", "metadata", "color", "alpha", "naming", "formatOptions"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "kind": { "enum": ["system", "user"] },
+    "output": {
+      "type": "object",
+      "required": ["format", "strategy", "quality", "minimumQuality", "maximumSearchAttempts"],
+      "properties": {
+        "format": { "enum": ["automatic", "mozjpeg", "oxipng", "webp", "avif"] },
+        "strategy": { "enum": ["fixedQuality", "targetBytes"] },
+        "quality": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "targetBytes": { "type": ["integer", "null"], "minimum": 1 },
+        "safetyTargetBytes": { "type": ["integer", "null"], "minimum": 1 },
+        "minimumQuality": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "maximumSearchAttempts": { "type": "integer", "minimum": 1, "maximum": 16 }
+      },
+      "additionalProperties": true
+    },
+    "resize": {
+      "type": "object",
+      "required": ["mode", "candidateWidths", "allowUpscale", "preserveAspectRatio"],
+      "properties": {
+        "mode": { "enum": ["original", "longestEdge", "fixedWidth", "fixedHeight", "fitBox", "adaptiveWidth"] },
+        "width": { "type": ["integer", "null"], "minimum": 1 },
+        "height": { "type": ["integer", "null"], "minimum": 1 },
+        "longestEdge": { "type": ["integer", "null"], "minimum": 1 },
+        "candidateWidths": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "uniqueItems": true },
+        "allowUpscale": { "type": "boolean" },
+        "preserveAspectRatio": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["policy", "preserveOrientation", "applyOrientationToPixels"],
+      "properties": {
+        "policy": { "enum": ["stripPrivate", "stripAll", "preserveSafe", "preserveAll"] },
+        "preserveOrientation": { "type": "boolean" },
+        "applyOrientationToPixels": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "color": {
+      "type": "object",
+      "required": ["outputColorSpace"],
+      "properties": { "outputColorSpace": { "const": "sRGB" } },
+      "additionalProperties": true
+    },
+    "alpha": {
+      "type": "object",
+      "required": ["jpegBackground"],
+      "properties": { "jpegBackground": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" } },
+      "additionalProperties": true
+    },
+    "naming": {
+      "type": "object",
+      "required": ["suffix", "conflictPolicy"],
+      "properties": {
+        "suffix": { "type": "string", "maxLength": 80 },
+        "conflictPolicy": { "enum": ["rename", "skip"] }
+      },
+      "additionalProperties": true
+    },
+    "formatOptions": { "type": "object", "additionalProperties": { "type": "number" } }
+  },
+  "additionalProperties": true
+}

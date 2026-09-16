@@ -1,0 +1,10 @@
+.DS_Store
+.build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+Build/
+Artifacts/
+*.sqbtmp-*
+node_modules/
+shared/codec-worker/dist/

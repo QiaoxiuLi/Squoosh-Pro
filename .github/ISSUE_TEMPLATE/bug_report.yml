@@ -1,0 +1,39 @@
+name: Bug report
+description: Report a reproducible Squoosh Pro problem without sharing private images.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not attach private images or credentials. A generated reproduction is preferred.
+  - type: input
+    id: version
+    attributes:
+      label: Squoosh Pro version
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: macOS version and Mac architecture
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: sourceChanged
+    attributes:
+      label: Was any source image modified?
+      options: ["No", "Yes", "Unknown"]
+    validations:
+      required: true

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "system.web-jpeg-150kb",
+  "name": "网页 JPEG ≤150KB",
+  "kind": "system",
+  "output": {
+    "format": "mozjpeg",
+    "strategy": "targetBytes",
+    "quality": 75,
+    "targetBytes": 150000,
+    "safetyTargetBytes": 145000,
+    "minimumQuality": 35,
+    "maximumSearchAttempts": 8
+  },
+  "resize": {
+    "mode": "adaptiveWidth",
+    "width": null,
+    "height": null,
+    "longestEdge": null,
+    "candidateWidths": [1000, 960, 920],
+    "allowUpscale": false,
+    "preserveAspectRatio": true
+  },
+  "metadata": { "policy": "stripPrivate", "preserveOrientation": false, "applyOrientationToPixels": true },
+  "color": { "outputColorSpace": "sRGB" },
+  "alpha": { "jpegBackground": "#FFFFFF" },
+  "naming": { "suffix": "", "conflictPolicy": "rename" },
+  "formatOptions": { "progressive": 1, "optimizeCoding": 1, "arithmetic": 0 }
+}

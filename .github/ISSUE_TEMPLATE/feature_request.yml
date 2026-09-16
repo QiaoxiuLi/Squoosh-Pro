@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest a focused improvement to the native macOS application.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Desired user workflow
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety expectations
+      options:
+        - label: The proposal can preserve local-only processing and never overwrite source images.
+          required: true
