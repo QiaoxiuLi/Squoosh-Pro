@@ -5,6 +5,11 @@ DerivedData/
 xcuserdata/
 Build/
 Artifacts/
+apps/windows/**/bin/
+apps/windows/**/obj/
+apps/windows/.packages/
+apps/windows/TestResults/
+apps/windows/UiTestArtifacts/
 *.sqbtmp-*
 node_modules/
 shared/codec-worker/dist/

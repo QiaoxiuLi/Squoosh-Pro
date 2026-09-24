@@ -12,6 +12,27 @@ With full Xcode, the script runs XCTest. With Command Line Tools only, it runs `
 
 `scripts/e2e-generated.sh` creates its fixtures in a temporary directory, processes them, verifies each output, and removes only that temporary directory. It never reads `Task`.
 
+## Windows Matrix
+
+Run the generated-image core checks:
+
+~~~powershell
+.\scripts\windows\run-core-checks.ps1
+~~~
+
+Build the self-contained release and then run the GUI test from a signed-in desktop:
+
+~~~powershell
+.\scripts\windows\build-release.ps1 -Version 0.2.0
+.\scripts\windows\run-ui-tests.ps1 -ApplicationPath .\Artifacts\WindowsRelease\Squoosh-Pro-0.2.0-Windows-x64\SquooshPro.exe
+~~~
+
+The Windows core runner checks built-in presets, resize math, no-upscale behavior, strict decimal 150 KB JPEG, JPEG/PNG/WebP/AVIF signature and decode verification, atomic commit, source SHA-256 preservation, conflict renaming, and bounded cache eviction.
+
+The UI runner imports a generated image through a test-only launch argument, then exercises search, preview selection, comparison slider, compression settings, preset-save entry, 920×680 compact layout, hardware acceleration, batch compression, byte limit, output dimensions, decode verification, source preservation, and completion state. For each important state, the app renders its WinUI visual tree into a PNG. The test requires minimum dimensions, nonwhite content, and color variation, preventing a blank capture from passing.
+
+Remote execution must still start the runner in the existing interactive Windows session. SSH is used only to copy files and invoke the configured test command; no remote-control software or Windows-hosted coding agent is required.
+
 ## Full Xcode Matrix
 
 The checked-in XCTest sources cover pure core behavior and generated files. XCUITest must additionally cover image and folder selection, Finder drag and drop, comparison divider, quality and byte fields, advanced settings, preset save, batch start, pause/resume/cancel, failures, output opening, recovery, light/dark appearance, keyboard access, accessibility identifiers, and narrow/wide windows.

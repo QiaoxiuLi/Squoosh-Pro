@@ -27,5 +27,11 @@ This file distinguishes implemented and verified behavior from source that still
 | Universal 2 command-line verification set | Verified slices | Core, WebKit check, native helper, and helper check report x86_64 + arm64; arm64 runs pass; Intel runtime blocked by absent Rosetta |
 | Universal 2 application | Verified slices | Application and native helper report x86_64 + arm64; ad-hoc signature verifies |
 | Developer ID signing/notarization/App Store | Not performed | No valid Developer ID identity is installed |
+| Windows WinUI 3 application | Verified on Windows 10 and 11 x64 | Full UI Automation and application-internal visual rendering pass on both systems |
+| Windows JPEG/PNG/WebP/AVIF | Verified | Generated-image encode, decode, format, dimensions, and signature checks pass |
+| Windows strict 150 KB JPEG | Verified | Output is 142019 bytes at 999×636 on both tested systems; 150000-byte ceiling and source hash pass |
+| Windows compact layout | Verified | Start command and nonblank 904×641 client render pass after resizing the outer window to 920×680 |
+| Windows preview cache | Verified | Bounded item/byte checks pass and UI export reuses unchanged preview results |
+| Windows release packaging | Verified with limitation | Self-contained x64 publish includes the required PRI resources; Authenticode signing is not configured |
 
-The product must not be labeled release-ready until every failed or unverified mandatory gate above is resolved.
+The artifacts may be published only as clearly labeled beta prereleases. They must not be described as signed, notarized, Store-ready, or stable until the corresponding platform gates are completed.

@@ -10,6 +10,12 @@ The application does not expose source overwrite or source deletion controls. A 
 
 An unfinished job stores security-scoped bookmarks for each input and its output directory, plus fallback paths and source fingerprints, only in the app's Application Support container. Recovery requires an explicit History action. Resolved bookmarks start access only for the resumed job and stop access afterward. Completed recovery records are removed; jobs with failures remain available for retry.
 
+## Windows Output Safety
+
+The Windows application captures the source byte count, modification time, and SHA-256 before encoding and checks the same fingerprint again before commit. It writes a uniquely named temporary file in the destination directory, reopens and decodes that file, verifies output format, dimensions, and optional byte ceiling, and then moves it to a destination that was confirmed not to exist. Existing outputs are renamed rather than overwritten. A failed or cancelled operation removes only its own temporary file.
+
+Windows settings, user presets, diagnostics, and job summaries are stored below `%LOCALAPPDATA%\Squoosh Pro`. The release does not include an upload service or account system.
+
 ## Protected Workspace Baseline
 
 Baseline captured 2026-09-15 before project writes:

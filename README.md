@@ -1,18 +1,23 @@
 # Squoosh Pro
 
-Squoosh Pro is a native macOS batch image compressor designed around a simple workflow: add images, choose a purpose, inspect the result, and compress safely. Images are processed locally and the app never overwrites source files.
+Squoosh Pro is a native desktop batch image compressor for macOS and Windows. Its workflow is deliberately simple: add images, choose a purpose, inspect the result, and compress safely. Images are processed locally and the app never overwrites source files.
 
 > Squoosh Pro is an independent project by Qiaoxiu Li. It is not an official Google product and is not affiliated with or endorsed by Google. The project reuses separately licensed codec components from the open-source Squoosh project; see `third_party/THIRD_PARTY_NOTICES.md`.
 
 ## Current Development Status
 
-The repository contains the native SwiftUI application source, platform-neutral preset and job contracts, safe output handling, strict JPEG byte targeting, batch state management, tests, and an offline codec-host adapter. Explicit JPEG output uses the bundled MozJPEG encoder so progressive, baseline, and coding-optimization settings affect the real output. Squoosh WASM assets for MozJPEG, OxiPNG, WebP, and AVIF are vendored for the offline host integration.
+The repository contains a native SwiftUI/AppKit application for macOS and a native WinUI 3 application for Windows 10 and 11. Both implementations include safe output handling, strict JPEG byte targeting, batch state management, bounded preview caching, user presets, and local-only processing.
 
-The native application is built and tested with Xcode 27.0. Core, recovery, strict-size, native 48MP AVIF, sandboxed WKWebView codec-host, and protected-file checks pass. The packaged application and its AVIF helper contain both `arm64` and `x86_64` slices. The downloadable prerelease is ad-hoc signed for local evaluation; Developer ID signing, notarization, Intel runtime testing, and App Store publication are not represented as completed. See `docs/KNOWN_LIMITATIONS.md` for the exact release boundary.
+The macOS application is built and tested with Xcode 27.0. Core, recovery, strict-size, native 48MP AVIF, sandboxed WKWebView codec-host, and protected-file checks pass. Its packaged application and AVIF helper contain both arm64 and x86_64 slices.
+
+The Windows x64 application is self-contained and uses Windows App SDK 1.6 plus Magick.NET 14.17.1. Core checks and full UI Automation flows pass on Windows 10 10.0.19045.6456 and Windows 11 10.0.26200.9457. The GUI test captures and analyzes the WinUI visual tree for the workspace, compression settings, compact 920×680 layout, application settings, and completed state instead of treating a blank desktop screenshot as success.
+
+Both downloadable builds are unsigned evaluation prereleases. The macOS build is ad-hoc signed and not notarized; the Windows build has no Authenticode signature and can trigger SmartScreen. See `docs/KNOWN_LIMITATIONS.md` for the exact release boundary.
 
 ## Highlights
 
 - Native SwiftUI and AppKit interface for macOS 13 and later
+- Native WinUI 3 interface for Windows 10 and Windows 11 x64
 - Multiple image and folder import, recursive folder discovery, and Finder drag and drop
 - Searchable image queue with click-to-preview and bounded preview-result caching reused by export
 - Original/output comparison with a draggable divider, fit, and 100% viewing modes
@@ -28,14 +33,19 @@ The native application is built and tested with Xcode 27.0. Core, recovery, stri
 - Killable local ImageIO AVIF helper when the running macOS supports it, with bundled WASM fallback
 - Versioned JSON Schema contracts kept free of macOS path types
 - Bundled offline codec resources with CSP and navigation rules that block external requests
+- Self-contained Windows distribution with no separate .NET or Windows App SDK installation required
 
-## Requirements
+## Runtime Requirements
 
-- macOS 13 or newer
-- Swift 6 toolchain
-- Full Xcode is recommended for application and UI testing
+- macOS 13 or newer on Apple silicon or Intel
+- 64-bit Windows 10 or Windows 11 for the Windows x64 package
 
-## Build
+## Development Requirements
+
+- macOS: Swift 6 and full Xcode
+- Windows: .NET SDK 8.0.425 and Visual Studio 2022 Build Tools with MSBuild and Windows SDK support
+
+## Build macOS
 
 ```bash
 ./scripts/bootstrap.sh
@@ -50,7 +60,17 @@ The local development application is generated at:
 Artifacts/Squoosh Pro.app
 ```
 
-## Test
+## Build Windows
+
+Run from PowerShell on a Windows x64 build machine:
+
+~~~powershell
+.\scripts\windows\build-release.ps1
+~~~
+
+The script creates the self-contained application folder, ZIP, and SHA-256 file under `Artifacts\WindowsRelease`.
+
+## Test macOS
 
 ```bash
 ./scripts/test-all.sh
@@ -66,6 +86,15 @@ To rerun the generated 8000x6000 AVIF gate explicitly:
 SQUOOSH_RUN_48MP_AVIF=1 swift run SquooshCoreCheck
 ```
 
+## Test Windows
+
+~~~powershell
+.\scripts\windows\run-core-checks.ps1
+.\scripts\windows\run-ui-tests.ps1 -ApplicationPath .\Artifacts\WindowsRelease\Squoosh-Pro-0.2.0-Windows-x64\SquooshPro.exe
+~~~
+
+The UI test must run from a signed-in interactive desktop session. It exercises real WinUI controls, strict output, source preservation, narrow-window layout, and nonblank visual rendering.
+
 ## Default 150KB Preset
 
 The app displays size limits in decimal KB, where `1 KB = 1,000 bytes`. The built-in preset therefore interprets `150 KB` as exactly `150,000 bytes`, with a `145,000-byte` safety target. It tries widths `1000`, `960`, and `920` without upscaling, and searches for the highest JPEG quality that satisfies the actual byte cap. If no valid candidate meets the limit, the item fails with `targetNotMet`; an oversized image is never reported as successful.
@@ -73,13 +102,15 @@ The app displays size limits in decimal KB, where `1 KB = 1,000 bytes`. The buil
 ## Documentation
 
 - [普通用户使用说明（中文）](docs/USER_GUIDE_ZH.md)
+- [Windows 普通用户使用说明（中文）](docs/USER_GUIDE_WINDOWS_ZH.md)
 - [0.1.0 Beta 1 发布说明（中文）](docs/RELEASE_NOTES_0.1.0_BETA1_ZH.md)
+- [0.2.0 Beta 1 Windows 发布说明（中文）](docs/RELEASE_NOTES_0.2.0_BETA1_ZH.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Data safety](docs/DATA_SAFETY.md)
 - [Preset schema](docs/PRESET_SCHEMA.md)
 - [Testing](docs/TESTING.md)
 - [Release process](docs/RELEASE.md)
-- [Future Windows foundation](docs/WINDOWS_FUTURE.md)
+- [Windows implementation](docs/WINDOWS_FUTURE.md)
 - [Implementation status and release gates](docs/IMPLEMENTATION_STATUS.md)
 - [Recorded test results](docs/TEST_RESULTS.md)
 - [Changelog](CHANGELOG.md)

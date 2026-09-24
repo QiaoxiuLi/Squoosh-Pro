@@ -27,3 +27,23 @@ Killable native ImageIO AVIF helper for large images
 The first release processes one full-resolution image at a time. This intentionally bounds memory; thumbnails use ImageIO downsampling. A future implementation can raise concurrency after codec-specific memory measurements, but must keep the coordinator as the limit owner.
 
 The native ImageIO encoder is the dependable JPEG/PNG path and output decoder/verifier. WebP is routed through bundled Squoosh WASM. AVIF uses a separately signed, sandbox-inheriting helper process when runtime capabilities expose `public.avif`, avoiding the pinned WASM encoder's 48MP memory limit while allowing a running encode to be terminated without killing the app. AVIF otherwise falls back to bundled WASM.
+
+## Windows
+
+The Windows implementation keeps its compression core independent from WinUI:
+
+~~~text
+WinUI 3 / Windows App SDK
+        |
+Queue, preview, presets, batch state, and local history
+        |
+SquooshPro.Core
+        |
+Magick.NET-Q8-x64 / ImageMagick
+        |
+JPEG / PNG / WebP / AVIF
+~~~
+
+`SquooshPro.Core` owns preset validation, resize math, target-byte quality search, source fingerprints, output verification, conflict-safe naming, timestamped output directories, and bounded preview caching. `SquooshPro.Windows` owns the native interface and local user storage. The self-contained x64 publish includes .NET and Windows App SDK runtime files.
+
+The Windows UI test channel is disabled during normal startup. When launched with the explicit test render argument, it accepts local sentinel files and renders the current WinUI visual tree to PNG. This exists so automated acceptance can distinguish a valid DirectComposition interface from a blank system-level screenshot.

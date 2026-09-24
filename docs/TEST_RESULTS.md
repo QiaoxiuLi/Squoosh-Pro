@@ -2,8 +2,20 @@
 
 Recorded on 2026-09-15 with Xcode 27.0, Apple Swift 6.4, macOS SDK 27.0, Node.js 24.18.0, and arm64.
 
+Windows results were recorded on 2026-09-24 using the same self-contained x64 release candidate on:
+
+- Windows 10 10.0.19045.6456
+- Windows 11 10.0.26200.9457
+- .NET SDK 8.0.425 and Visual Studio Build Tools 2022 on the Windows 11 build host
+- Windows App SDK 1.6.250602001 and Magick.NET-Q8-x64 14.17.1
+
 ## Passed
 
+- Windows release build: 0 warnings and 0 errors; required project PRI is present in the unpackaged publish output
+- Windows core checks: built-in presets, resize/no-upscale, strict decimal 150 KB JPEG, JPEG/PNG/WebP/AVIF encode-decode-signature verification, atomic commit, source protection, conflict rename, and bounded preview cache
+- Windows 10 and Windows 11 UI Automation: main window, search, preview comparison slider, target KB, quality slider, preset save, clickable advanced-option explanations, compact-window start command and fully visible preview labels, hardware acceleration default, batch start, output verification, source preservation, and completion
+- Windows 10 and Windows 11 internal WinUI renders: workspace, compression settings, 920×680 compact window, application settings, and completed state all pass nonblank content analysis
+- Windows strict-size UI result on both systems: 142019-byte JPEG, 999×636 pixels, no source hash change
 - Four codec smoke tests: MozJPEG, WebP, AVIF, OxiPNG at 100x100
 - Two contract tests: JSON Schema syntax/version fields and stable platform-neutral enums
 - Core executable checks: built-in presets, target-byte binary search, aspect ratio, no-upscale, strict 150,000-byte result, width cap, atomic commit, decode/signature/dimension/byte verification, source SHA-256 preservation, and conflict renaming
@@ -22,6 +34,7 @@ Recorded on 2026-09-15 with Xcode 27.0, Apple Swift 6.4, macOS SDK 27.0, Node.js
 
 ## Failed or Blocked
 
+- Windows Authenticode signing, signed installer creation, Windows ARM64, and Microsoft Store packaging were not run.
 - Pinned AVIF WASM at 8000x6000 returns no encoded result; runtime-native ImageIO AVIF is the verified large-image path.
 - A dedicated Xcode project/UI-test target has not been added, so the complete XCUITest interaction and window-size matrix has not run.
 - Intel runtime execution was not run because Rosetta is absent; explicit `arch -x86_64` returns `Bad CPU type in executable` even though both Intel slices build and link.
