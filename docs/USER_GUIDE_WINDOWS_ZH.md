@@ -8,7 +8,7 @@ Squoosh Pro 是一款在 Windows 本地运行的批量图片压缩工具。图�
 - 本版本仅提供 x64 安装包，不支持 Windows on ARM 原生运行
 - 建议预留至少 1 GB 可用磁盘空间用于解压和保存结果
 
-当前 Beta 安装包尚未进行商业代码签名，Windows Defender SmartScreen 可能在第一次运行时显示提醒。请只从本项目的 GitHub Release 页面下载，并先核对 SHA-256。
+当前 0.2.0 发布包尚未进行商业代码签名，Windows Defender SmartScreen 可能在第一次运行时显示提醒。请只从本项目的 GitHub Release 页面下载，并先核对 SHA-256。
 
 ## 下载和启动
 
@@ -126,6 +126,10 @@ Squoosh Pro 是一款在 Windows 本地运行的批量图片压缩工具。图�
     Get-FileHash .\Squoosh-Pro-0.2.0-Windows-x64.zip -Algorithm SHA256
 
 显示的哈希值应与 “.sha256” 文件中的值完全一致。
+
+## 第三方组件与许可证
+
+解压后的 `THIRD_PARTY_NOTICES.md` 和 `LICENSES` 文件夹列出了随包组件的名称、版本、版权声明和许可文本。Squoosh Pro 是独立项目，不是 Google 或 Microsoft 的官方产品。
 
 ## 常见问题
 

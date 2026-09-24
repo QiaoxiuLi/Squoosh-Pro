@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0 - 2026-09-24
+
+- Published the Windows 10 and Windows 11 x64 build as a non-prerelease GitHub Release.
+- Rewrote the project README as an end-user product introduction with download, format, privacy, safety, and common workflow guidance.
+- Added complete release-package attribution for WebView2 SDK, .NET Runtime, Windows SDK runtime projections, and Windows App SDK third-party notices.
+- Retained the tested application binaries while refreshing the packaged user guide and legal notices.
+
+The Windows package is not yet Authenticode signed and can trigger SmartScreen. The macOS release remains `0.1.0 Beta 1`, ad-hoc signed and not notarized.
+
 ## 0.2.0-beta.1 - 2026-09-24
 
 - Added a native WinUI 3 application for Windows 10 and Windows 11 x64.

@@ -1,126 +1,91 @@
 # Squoosh Pro
 
-Squoosh Pro is a native desktop batch image compressor for macOS and Windows. Its workflow is deliberately simple: add images, choose a purpose, inspect the result, and compress safely. Images are processed locally and the app never overwrites source files.
+Squoosh Pro 是一款面向 macOS、Windows 10 和 Windows 11 的本地批量图片压缩工具。它可以在不上传图片、不覆盖原图的前提下，预览压缩效果并批量导出 JPEG（JPG）、PNG、WebP 或 AVIF。
 
-> Squoosh Pro is an independent project by Qiaoxiu Li. It is not an official Google product and is not affiliated with or endorsed by Google. The project reuses separately licensed codec components from the open-source Squoosh project; see `third_party/THIRD_PARTY_NOTICES.md`.
+[下载最新版本](https://github.com/QiaoxiuLi/Squoosh-Pro/releases/latest) · [Windows 使用说明](docs/USER_GUIDE_WINDOWS_ZH.md) · [macOS 使用说明](docs/USER_GUIDE_ZH.md)
 
-## Current Development Status
+## 主要功能
 
-The repository contains a native SwiftUI/AppKit application for macOS and a native WinUI 3 application for Windows 10 and 11. Both implementations include safe output handling, strict JPEG byte targeting, batch state management, bounded preview caching, user presets, and local-only processing.
+- 一次添加多张图片或整个文件夹，也可以直接拖入窗口。
+- 在图片列表中搜索文件名，点击任意图片查看压缩效果。
+- 使用滑杆对比原图与输出图，预览完成的结果会暂时缓存，正式导出时可直接复用。
+- 按质量压缩，或为每张图片设置明确的 KB 上限。
+- 按最长边、固定宽度、固定高度或指定范围等比例缩放，不会擅自裁切图片。
+- 保存带名称和备注的个人预设，并可导入或导出自己的预设。
+- 批量任务支持暂停、继续、取消和失败项重试。
+- 每次导出自动建立带时间戳的结果文件夹，同名文件不会覆盖。
+- 默认开启硬件加速预览；如果设备不适合，应用会自动回退到兼容模式。
 
-The macOS application is built and tested with Xcode 27.0. Core, recovery, strict-size, native 48MP AVIF, sandboxed WKWebView codec-host, and protected-file checks pass. Its packaged application and AVIF helper contain both arm64 and x86_64 slices.
+## 支持的格式
 
-The Windows x64 application is self-contained and uses Windows App SDK 1.6 plus Magick.NET 14.17.1. Core checks and full UI Automation flows pass on Windows 10 10.0.19045.6456 and Windows 11 10.0.26200.9457. The GUI test captures and analyzes the WinUI visual tree for the workspace, compression settings, compact 920×680 layout, application settings, and completed state instead of treating a blank desktop screenshot as success.
+| 格式 | 适合场景 | 说明 |
+| --- | --- | --- |
+| JPEG（JPG） | 照片、商品图、网站图片 | 兼容主流浏览器、Android、iPhone 和常见办公软件；不支持透明背景 |
+| PNG | 截图、图标、文字图片、透明背景 | 无损保存，文件通常比 JPEG 大 |
+| WebP | 现代网站和支持 WebP 的应用 | 通常比 JPEG 或 PNG 更小，可保留透明背景 |
+| AVIF | 对文件大小要求更高的现代网站 | 压缩率高，但处理速度较慢，旧软件兼容性不如 JPEG |
 
-Both downloadable builds are unsigned evaluation prereleases. The macOS build is ad-hoc signed and not notarized; the Windows build has no Authenticode signature and can trigger SmartScreen. See `docs/KNOWN_LIMITATIONS.md` for the exact release boundary.
+## 下载与运行
 
-## Highlights
+### Windows 10 / 11
 
-- Native SwiftUI and AppKit interface for macOS 13 and later
-- Native WinUI 3 interface for Windows 10 and Windows 11 x64
-- Multiple image and folder import, recursive folder discovery, and Finder drag and drop
-- Searchable image queue with click-to-preview and bounded preview-result caching reused by export
-- Original/output comparison with a draggable divider, fit, and 100% viewing modes
-- Metal-backed Core Image preview rendering with a persistent hardware-acceleration switch and startup fallback
-- Fixed-quality JPEG and PNG output
-- Strict per-image JPEG limits entered as decimal KB and enforced using measured bytes and adaptive width/quality search
-- Built-in presets including `网页 JPEG ≤150KB`
-- Timestamped output directories and no-overwrite conflict renaming
-- Temporary-file verification followed by atomic no-overwrite commit
-- Pause, resume, cancel, per-file failures, retry, manifests, and history records
-- Security-scoped bookmark restoration with source fingerprint checks for interrupted jobs
-- Interruptible WebKit codec execution with automatic host reconstruction and one safe retry after a process crash
-- Killable local ImageIO AVIF helper when the running macOS supports it, with bundled WASM fallback
-- Versioned JSON Schema contracts kept free of macOS path types
-- Bundled offline codec resources with CSP and navigation rules that block external requests
-- Self-contained Windows distribution with no separate .NET or Windows App SDK installation required
+1. 从 [Releases](https://github.com/QiaoxiuLi/Squoosh-Pro/releases/latest) 下载 `Squoosh-Pro-0.2.0-Windows-x64.zip` 和同名 `.sha256` 文件。
+2. 右键 ZIP 并选择“全部解压”。请保留解压后的完整文件夹，不能只复制 `SquooshPro.exe`。
+3. 双击 `SquooshPro.exe` 启动。
 
-## Runtime Requirements
+Windows 版本支持 64 位 Windows 10 和 Windows 11。发布包已经包含所需运行组件，无需另行安装 .NET 或 Windows App SDK。
 
-- macOS 13 or newer on Apple silicon or Intel
-- 64-bit Windows 10 or Windows 11 for the Windows x64 package
+当前 `0.2.0` 下载包尚未进行商业 Authenticode 代码签名，因此 Windows Defender SmartScreen 可能在首次启动时显示提醒。请只从本仓库的 Release 页面下载并核对 SHA-256；不要为运行本软件而关闭 Windows 安全中心。
 
-## Development Requirements
+### macOS
 
-- macOS: Swift 6 and full Xcode
-- Windows: .NET SDK 8.0.425 and Visual Studio 2022 Build Tools with MSBuild and Windows SDK support
+macOS 版本支持 macOS 13 或更高版本，并同时支持 Apple 芯片和 Intel Mac。当前公开的 macOS `0.1.0 Beta 1` 为未公证测试版，可在 [历史版本](https://github.com/QiaoxiuLi/Squoosh-Pro/releases/tag/v0.1.0-beta.1) 下载。
 
-## Build macOS
+## 快速开始
 
-```bash
-./scripts/bootstrap.sh
-./scripts/build-codecs.sh
-./scripts/build-macos.sh
-./scripts/build-release.sh
-```
+1. 点击“添加图片”或“添加文件夹”，也可以把图片拖入窗口。
+2. 选择一个预设；普通照片可直接选择“JPEG（JPG）”。
+3. 点击图片查看预览，用对比滑杆检查清晰度。
+4. 如有需要，在“压缩设置”中调整质量、KB 上限和图片尺寸。
+5. 点击“开始压缩”。
+6. 完成后点击“打开输出目录”。
 
-The local development application is generated at:
+## 每张图片不超过 150 KB
 
-```text
-Artifacts/Squoosh Pro.app
-```
+需要网站图片每张不超过 150 KB 时，选择内置的“网页 JPEG ≤150KB”预设：
 
-## Build Windows
+- `1 KB` 按 `1000` 字节计算，最终文件不会超过 `150000` 字节。
+- 应用会在 `1000`、`960` 和 `920` 像素宽度中自动选择，并寻找满足上限的尽量高清结果。
+- 原图较小时不会被放大。
+- 如果允许的尺寸和最低质量仍无法满足限制，该图片会明确显示失败，不会把超限文件标记为成功。
 
-Run from PowerShell on a Windows x64 build machine:
+这类 JPEG 可在主流桌面浏览器、Android 浏览器和 iPhone Safari 中正常使用。
 
-~~~powershell
-.\scripts\windows\build-release.ps1
-~~~
+## 隐私与文件安全
 
-The script creates the self-contained application folder, ZIP, and SHA-256 file under `Artifacts\WindowsRelease`.
+- 图片只在你的电脑上处理，不需要账号，也不会上传到服务器。
+- 原图以只读方式使用，不会被覆盖或删除。
+- 输出文件会先经过格式、尺寸、可解码性和大小检查，再保存为最终结果。
+- 已存在同名文件时会自动使用新文件名。
+- 预览缓存有容量上限，并会在任务完成、清空列表或退出应用时清理。
+- 设置、个人预设和历史记录保存在本机。
 
-## Test macOS
+## 第三方组件与致谢
 
-```bash
-./scripts/test-all.sh
-./scripts/verify-release.sh
-./scripts/build-universal-core.sh
-```
+Squoosh Pro 是独立项目，不是 Google、Microsoft 或 Apple 的官方产品，也不代表这些公司对本软件的认可。
 
-Tests only use generated fixtures. Files under a user's selected source directory are opened read-only and are never copied into this repository.
+本项目使用并感谢以下软件与平台组件：
 
-To rerun the generated 8000x6000 AVIF gate explicitly:
+- [GoogleChromeLabs/squoosh](https://github.com/GoogleChromeLabs/squoosh) 的本地编解码资源，以及 MozJPEG/libjpeg-turbo、OxiPNG、libwebp、libavif 和 libaom。
+- Windows 版本使用 Magick.NET 14.17.1、ImageMagick、Microsoft Windows App SDK 1.6.250602001、Microsoft WebView2 SDK 1.0.2651.64、.NET Runtime 8.0.31 和 Microsoft Windows SDK 运行组件。
+- macOS 版本使用 SwiftUI、AppKit、WebKit、Core Image、ImageIO 和 Metal 等 macOS 系统框架。
 
-```bash
-SQUOOSH_RUN_48MP_AVIF=1 swift run SquooshCoreCheck
-```
+各组件的版权、版本、来源和完整许可文本见 [第三方公告](third_party/THIRD_PARTY_NOTICES.md)。Windows 下载包内也包含 `THIRD_PARTY_NOTICES.md` 和 `LICENSES` 文件夹，便于离线查阅。
 
-## Test Windows
+## 许可
 
-~~~powershell
-.\scripts\windows\run-core-checks.ps1
-.\scripts\windows\run-ui-tests.ps1 -ApplicationPath .\Artifacts\WindowsRelease\Squoosh-Pro-0.2.0-Windows-x64\SquooshPro.exe
-~~~
+Squoosh Pro 的原创代码和文档采用 [MIT License](LICENSE)。第三方组件继续适用各自的许可证和版权声明。
 
-The UI test must run from a signed-in interactive desktop session. It exercises real WinUI controls, strict output, source preservation, narrow-window layout, and nonblank visual rendering.
+## 获取帮助
 
-## Default 150KB Preset
-
-The app displays size limits in decimal KB, where `1 KB = 1,000 bytes`. The built-in preset therefore interprets `150 KB` as exactly `150,000 bytes`, with a `145,000-byte` safety target. It tries widths `1000`, `960`, and `920` without upscaling, and searches for the highest JPEG quality that satisfies the actual byte cap. If no valid candidate meets the limit, the item fails with `targetNotMet`; an oversized image is never reported as successful.
-
-## Documentation
-
-- [普通用户使用说明（中文）](docs/USER_GUIDE_ZH.md)
-- [Windows 普通用户使用说明（中文）](docs/USER_GUIDE_WINDOWS_ZH.md)
-- [0.1.0 Beta 1 发布说明（中文）](docs/RELEASE_NOTES_0.1.0_BETA1_ZH.md)
-- [0.2.0 Beta 1 Windows 发布说明（中文）](docs/RELEASE_NOTES_0.2.0_BETA1_ZH.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Data safety](docs/DATA_SAFETY.md)
-- [Preset schema](docs/PRESET_SCHEMA.md)
-- [Testing](docs/TESTING.md)
-- [Release process](docs/RELEASE.md)
-- [Windows implementation](docs/WINDOWS_FUTURE.md)
-- [Implementation status and release gates](docs/IMPLEMENTATION_STATUS.md)
-- [Recorded test results](docs/TEST_RESULTS.md)
-- [Changelog](CHANGELOG.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security policy](SECURITY.md)
-
-## Privacy
-
-Squoosh Pro does not require an account or upload images. Runtime codec files are bundled with the app. Logs avoid image contents and full source paths.
-
-## License
-
-Original Squoosh Pro code is licensed under the MIT License. Third-party components retain their respective licenses and notices.
+如果遇到问题，请在 [GitHub Issues](https://github.com/QiaoxiuLi/Squoosh-Pro/issues) 中说明系统版本、输入图片格式、使用的预设、实际结果和错误提示。除非图片可以公开，否则不要上传私人原图。
