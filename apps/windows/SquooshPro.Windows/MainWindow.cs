@@ -35,12 +35,16 @@ public sealed class MainWindow : Window
     private readonly Grid compressionBody = new();
     private readonly ListView queueList = new();
     private readonly AutoSuggestBox searchBox = new();
-    private readonly TabView detailTabs = new();
-    private readonly Image originalImage = new();
-    private readonly Image outputImage = new();
-    private readonly Grid previewCanvas = new();
-    private readonly RectangleGeometry outputClip = new();
-    private readonly Slider previewDivider = new();
+    private readonly SelectorBar workspaceSelector = new();
+    private readonly ComparisonPreview comparison = new();
+    private readonly SemaphoreSlim previewGate = new(1, 1);
+    private readonly Grid workspace = new();
+    private FrameworkElement? queuePane, previewPane, settingsPane;
+    private bool? wideWorkspace;
+    private string? originalPreviewPath;
+    private long originalPreviewStamp;
+    private UIElement? targetRow, widthRow, heightRow;
+    private Button? addImagesButton, addFolderButton;
     private readonly TextBlock previewStatus = new();
     private readonly TextBlock previewMetrics = new();
     private readonly ComboBox presetBox = new();
@@ -60,10 +64,10 @@ public sealed class MainWindow : Window
     private readonly TextBlock outputLocation = new();
     private readonly TextBlock batchStatus = new();
     private readonly ProgressBar batchProgress = new();
-    private readonly AppBarButton startButton = new();
-    private readonly AppBarButton pauseButton = new();
-    private readonly AppBarButton cancelButton = new();
-    private readonly AppBarButton clearButton = new();
+    private readonly Button startButton = new();
+    private readonly Button pauseButton = new();
+    private readonly Button cancelButton = new();
+    private readonly Button clearButton = new();
     private readonly Button retryButton = new();
     private readonly Button openOutputButton = new();
     private readonly CompressionPreset initialPreset = Presets.WebJpeg150Kb;
@@ -118,11 +122,14 @@ public sealed class MainWindow : Window
     {
         navigation.IsBackButtonVisible = NavigationViewBackButtonVisible.Collapsed;
         navigation.IsSettingsVisible = false;
-        navigation.PaneDisplayMode = NavigationViewPaneDisplayMode.LeftCompact;
-        navigation.OpenPaneLength = 190;
-        navigation.CompactPaneLength = 48;
+        navigation.PaneDisplayMode = NavigationViewPaneDisplayMode.Auto;
+        navigation.ExpandedModeThresholdWidth = 1180;
+        navigation.CompactModeThresholdWidth = 700;
+        navigation.OpenPaneLength = 180;
+        navigation.CompactPaneLength = 52;
         navigation.SizeChanged += (_, args) => UpdateNavigationForWidth(args.NewSize.Width);
-        navigation.Header = "压缩";
+        navigation.PaneTitle = "Squoosh Pro";
+        navigation.IsTitleBarAutoPaddingEnabled = false;
         navigation.MenuItems.Add(NavigationItem("压缩", Symbol.Edit, "compress"));
         navigation.MenuItems.Add(NavigationItem("预设", Symbol.Library, "presets"));
         navigation.MenuItems.Add(NavigationItem("历史记录", Symbol.Clock, "history"));
@@ -130,13 +137,29 @@ public sealed class MainWindow : Window
         navigation.SelectedItem = navigation.MenuItems[0];
         navigation.SelectionChanged += NavigationSelectionChanged;
         navigation.Content = pageHost;
-        Content = navigation;
+        var shell = new Grid();
+        shell.RowDefinitions.Add(new RowDefinition { Height = new GridLength(44) });
+        shell.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        var titleBar = new Grid { Padding = new Thickness(20, 0, 140, 0) };
+        titleBar.Children.Add(new TextBlock { Text = "Squoosh Pro", FontSize = 14, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+        shell.Children.Add(titleBar);
+        Grid.SetRow(navigation, 1);
+        shell.Children.Add(navigation);
+        Content = shell;
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(titleBar);
+        if (Microsoft.UI.Composition.SystemBackdrops.MicaController.IsSupported())
+        {
+            SystemBackdrop = new MicaBackdrop();
+            shell.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        }
+        else shell.Background = ComparisonPreview.Brush("LayerFillColorDefaultBrush");
         ShowCompressionPage();
     }
 
     private static NavigationViewItem NavigationItem(string title, Symbol symbol, string tag)
     {
-        var item = new NavigationViewItem { Content = title, Icon = new SymbolIcon(symbol), Tag = tag };
+        var item = new NavigationViewItem { Content = title, Icon = PlatformIcon(symbol, 20), Tag = tag };
         AutomationProperties.SetAutomationId(item, $"nav.{tag}");
         return item;
     }
@@ -146,13 +169,13 @@ public sealed class MainWindow : Window
         var compact = width < 1100;
         if (compactNavigation == compact) return;
         compactNavigation = compact;
+        navigation.PaneDisplayMode = compact ? NavigationViewPaneDisplayMode.LeftCompact : NavigationViewPaneDisplayMode.Left;
         navigation.IsPaneOpen = !compact;
     }
 
     private void NavigationSelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         if (args.SelectedItemContainer?.Tag is not string tag) return;
-        navigation.Header = args.SelectedItemContainer.Content;
         switch (tag)
         {
             case "compress": ShowCompressionPage(); break;
@@ -184,54 +207,87 @@ public sealed class MainWindow : Window
         RefreshCompressionBody();
     }
 
-    private CommandBar BuildCommandBar()
+    private Grid BuildCommandBar()
     {
-        var bar = new CommandBar
-        {
-            DefaultLabelPosition = CommandBarDefaultLabelPosition.Right,
-            IsDynamicOverflowEnabled = false,
-            OverflowButtonVisibility = CommandBarOverflowButtonVisibility.Collapsed
-        };
+        var bar = new Grid { Margin = new Thickness(16, 8, 16, 8), ColumnSpacing = 12 };
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var addImages = AppBar("添加图片", Symbol.Add, "toolbar.addImages", async () => await ChooseImagesAsync());
         var addFolder = AppBar("添加文件夹", Symbol.Folder, "toolbar.addFolder", async () => await ChooseFolderAsync());
-        clearButton.Label = "清空";
-        clearButton.Icon = new SymbolIcon(Symbol.Delete);
-        clearButton.IsCompact = false;
+        addImagesButton = addImages;
+        addFolderButton = addFolder;
+        clearButton.Content = ToolLabel("清空", Symbol.Delete);
         AutomationProperties.SetAutomationId(clearButton, "toolbar.clear");
         clearButton.Click += (_, _) => ClearItems();
-        startButton.Label = "开始压缩";
-        startButton.Icon = new SymbolIcon(Symbol.Play);
-        startButton.IsCompact = false;
+        startButton.Content = ToolLabel("开始压缩", Symbol.Play);
+        startButton.Style = (Style)Application.Current.Resources["AccentButtonStyle"];
         AutomationProperties.SetAutomationId(startButton, "toolbar.start");
         startButton.Click += async (_, _) => await StartBatchAsync();
-        pauseButton.Label = "暂停";
-        pauseButton.Icon = new SymbolIcon(Symbol.Pause);
-        pauseButton.IsCompact = false;
+        pauseButton.Content = ToolLabel("暂停", Symbol.Pause);
         pauseButton.Visibility = Visibility.Collapsed;
         AutomationProperties.SetAutomationId(pauseButton, "toolbar.pauseResume");
         pauseButton.Click += (_, _) => TogglePause();
-        cancelButton.Label = "取消";
-        cancelButton.Icon = new SymbolIcon(Symbol.Cancel);
-        cancelButton.IsCompact = false;
+        cancelButton.Content = ToolLabel("取消", Symbol.Cancel);
         cancelButton.Visibility = Visibility.Collapsed;
         AutomationProperties.SetAutomationId(cancelButton, "toolbar.cancel");
         cancelButton.Click += (_, _) => batchCancellation?.Cancel();
-        bar.PrimaryCommands.Add(addImages);
-        bar.PrimaryCommands.Add(addFolder);
-        bar.PrimaryCommands.Add(clearButton);
-        bar.PrimaryCommands.Add(startButton);
-        bar.PrimaryCommands.Add(pauseButton);
-        bar.PrimaryCommands.Add(cancelButton);
+        var imports = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        imports.Children.Add(addImages);
+        imports.Children.Add(addFolder);
+        imports.Children.Add(clearButton);
+        var more = new Button { Content = "更多", Visibility = Visibility.Collapsed };
+        var menu = new MenuFlyout();
+        var folderMenu = new MenuFlyoutItem { Text = "添加文件夹" };
+        AutomationProperties.SetAutomationId(folderMenu, "toolbar.more.addFolder");
+        folderMenu.Click += async (_, _) => await ChooseFolderAsync();
+        var clearMenu = new MenuFlyoutItem { Text = "清空图片列表" };
+        clearMenu.Click += (_, _) => ClearItems();
+        menu.Items.Add(folderMenu); menu.Items.Add(clearMenu); more.Flyout = menu;
+        AutomationProperties.SetAutomationId(more, "toolbar.more");
+        imports.Children.Add(more);
+        bar.Children.Add(imports);
+        var run = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        run.Children.Add(startButton); run.Children.Add(pauseButton); run.Children.Add(cancelButton);
+        Grid.SetColumn(run, 1); bar.Children.Add(run);
+        bar.SizeChanged += (_, args) =>
+        {
+            var compact = args.NewSize.Width < 560;
+            addFolder.Visibility = clearButton.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+            more.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+        };
         return bar;
     }
 
-    private static AppBarButton AppBar(string label, Symbol symbol, string automationId, Func<Task> action)
+    private static Button AppBar(string label, Symbol symbol, string automationId, Func<Task> action)
     {
-        var button = new AppBarButton { Label = label, Icon = new SymbolIcon(symbol), IsCompact = false };
+        var button = new Button { Content = ToolLabel(label, symbol) };
         AutomationProperties.SetAutomationId(button, automationId);
+        AutomationProperties.SetName(button, label);
         button.Click += async (_, _) => await action();
         return button;
     }
+
+    private static StackPanel ToolLabel(string text, Symbol symbol)
+    {
+        var label = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        label.Children.Add(PlatformIcon(symbol, 16));
+        label.Children.Add(new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center });
+        return label;
+    }
+
+    private static FontIcon PlatformIcon(Symbol symbol, double size) => new()
+    {
+        // Symbol uses legacy code points, not the Fluent/MDL2 font glyph values.
+        Glyph = symbol switch
+        {
+            Symbol.Add => "\uE710", Symbol.Folder => "\uE8B7", Symbol.Delete => "\uE74D",
+            Symbol.Play => "\uE768", Symbol.Pause => "\uE769", Symbol.Cancel => "\uE711",
+            Symbol.Edit => "\uE70F", Symbol.Library => "\uE8F1", Symbol.Clock => "\uE823",
+            Symbol.Setting => "\uE713", _ => throw new ArgumentOutOfRangeException(nameof(symbol))
+        },
+        FontFamily = new FontFamily(OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000) ? "Segoe Fluent Icons" : "Segoe MDL2 Assets"),
+        FontSize = size, VerticalAlignment = VerticalAlignment.Center
+    };
 
     private void BuildCompressionBody()
     {
@@ -245,11 +301,6 @@ public sealed class MainWindow : Window
 
     private FrameworkElement BuildWorkspace()
     {
-        var workspace = new Grid();
-        workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(290), MinWidth = 230 });
-        workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
-        workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MinWidth = 420 });
-
         var queueCard = Card();
         var queue = new Grid { Padding = new Thickness(12) };
         queue.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -268,77 +319,93 @@ public sealed class MainWindow : Window
         queueList.Margin = new Thickness(0, 10, 0, 0);
         queue.Children.Add(queueList);
         queueCard.Child = queue;
-        workspace.Children.Add(queueCard);
-
-        detailTabs.TabItems.Add(new TabViewItem { Header = "效果预览", IconSource = new SymbolIconSource { Symbol = Symbol.Preview }, Content = BuildPreviewPane(), IsClosable = false });
-        detailTabs.TabItems.Add(new TabViewItem { Header = "压缩设置", IconSource = new SymbolIconSource { Symbol = Symbol.Setting }, Content = BuildSettingsPane(), IsClosable = false });
-        detailTabs.IsAddTabButtonVisible = false;
-        detailTabs.CanDragTabs = false;
-        AutomationProperties.SetAutomationId(detailTabs, "workspace.tabs");
-        Grid.SetColumn(detailTabs, 2);
-        workspace.Children.Add(detailTabs);
+        queuePane = queueCard;
+        previewPane = (FrameworkElement)BuildPreviewPane();
+        settingsPane = (FrameworkElement)BuildSettingsPane();
+        workspace.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        workspace.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        foreach (var (text, id) in new[] { ("图片", "queue"), ("效果预览", "preview"), ("压缩设置", "settings") })
+        {
+            var tab = new SelectorBarItem { Text = text };
+            AutomationProperties.SetAutomationId(tab, $"workspace.{id}Tab");
+            workspaceSelector.Items.Add(tab);
+        }
+        AutomationProperties.SetAutomationId(workspaceSelector, "workspace.tabs");
+        workspaceSelector.SelectedItem = workspaceSelector.Items[1];
+        workspaceSelector.Margin = new Thickness(0, 0, 0, 10);
+        workspaceSelector.SelectionChanged += (_, _) => UpdateWorkspaceVisibility();
+        workspace.Children.Add(workspaceSelector);
+        foreach (var pane in new[] { queuePane, previewPane, settingsPane }) { Grid.SetRow(pane, 1); workspace.Children.Add(pane); }
+        workspace.SizeChanged += (_, _) => ReflowWorkspace();
+        ReflowWorkspace();
         return workspace;
+    }
+
+    private void ReflowWorkspace()
+    {
+        if (queuePane is null || previewPane is null || settingsPane is null) return;
+        var wide = workspace.ActualWidth >= 980 && workspace.ActualHeight >= 420;
+        if (wideWorkspace == wide) return;
+        wideWorkspace = wide;
+        workspace.ColumnDefinitions.Clear();
+        var panes = new[] { queuePane, previewPane, settingsPane };
+        if (wide)
+        {
+            workspace.ColumnSpacing = 12;
+            workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
+            workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            workspace.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(300) });
+            for (var i = 0; i < panes.Length; i++) Grid.SetColumn(panes[i], i);
+        }
+        else
+        {
+            workspace.ColumnSpacing = 0;
+            workspace.ColumnDefinitions.Add(new ColumnDefinition());
+            foreach (var pane in panes) Grid.SetColumn(pane, 0);
+        }
+        UpdateWorkspaceVisibility();
+    }
+
+    private void UpdateWorkspaceVisibility()
+    {
+        workspaceSelector.Visibility = wideWorkspace == true ? Visibility.Collapsed : Visibility.Visible;
+        var panes = new[] { queuePane, previewPane, settingsPane };
+        for (var i = 0; i < panes.Length; i++) if (panes[i] is not null)
+            panes[i]!.Visibility = wideWorkspace == true || workspaceSelector.SelectedItem == workspaceSelector.Items[i] ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private UIElement BuildPreviewPane()
     {
         var card = Card();
-        var root = new Grid { Padding = new Thickness(16) };
+        var root = new Grid { Padding = new Thickness(12) };
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         previewStatus.Text = "选择图片后查看效果";
         previewStatus.FontSize = 16;
         previewStatus.FontWeight = Microsoft.UI.Text.FontWeights.SemiBold;
+        previewStatus.TextTrimming = TextTrimming.CharacterEllipsis;
         AutomationProperties.SetAutomationId(previewStatus, "preview.status");
         root.Children.Add(previewStatus);
 
-        previewCanvas.Background = new SolidColorBrush(Microsoft.UI.Colors.WhiteSmoke);
-        previewCanvas.Margin = new Thickness(0, 12, 0, 10);
-        originalImage.Stretch = Stretch.Uniform;
-        outputImage.Stretch = Stretch.Uniform;
-        outputImage.Clip = outputClip;
-        previewCanvas.Children.Add(originalImage);
-        previewCanvas.Children.Add(outputImage);
-        var labels = new Grid { IsHitTestVisible = false, Padding = new Thickness(10) };
-        labels.ColumnDefinitions.Add(new ColumnDefinition());
-        labels.ColumnDefinitions.Add(new ColumnDefinition());
-        labels.Children.Add(Badge("原图", HorizontalAlignment.Left));
-        var outputLabel = Badge("输出", HorizontalAlignment.Right);
-        Grid.SetColumn(outputLabel, 1);
-        labels.Children.Add(outputLabel);
-        previewCanvas.Children.Add(labels);
-        previewCanvas.SizeChanged += (_, _) => UpdatePreviewClip();
-        Grid.SetRow(previewCanvas, 1);
-        root.Children.Add(previewCanvas);
-
-        var footer = new Grid();
-        footer.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        footer.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        previewDivider.Minimum = 0;
-        previewDivider.Maximum = 100;
-        previewDivider.Value = 50;
-        previewDivider.Header = "原图 / 输出对比";
-        AutomationProperties.SetAutomationId(previewDivider, "preview.divider");
-        AutomationProperties.SetName(previewDivider, "原图 / 输出对比");
-        previewDivider.ValueChanged += (_, _) => UpdatePreviewClip();
-        footer.Children.Add(previewDivider);
-        previewMetrics.Text = "预计输出 — · 输出尺寸 —";
+        comparison.Margin = new Thickness(0, 10, 0, 0);
+        Grid.SetRow(comparison, 1);
+        root.Children.Add(comparison);
+        previewMetrics.Text = "选择图片后查看输出大小和尺寸";
         previewMetrics.Margin = new Thickness(0, 6, 0, 0);
-        previewMetrics.Foreground = new SolidColorBrush(Microsoft.UI.Colors.Gray);
+        previewMetrics.Foreground = ComparisonPreview.Brush("TextFillColorSecondaryBrush");
+        previewMetrics.TextWrapping = TextWrapping.Wrap;
         AutomationProperties.SetAutomationId(previewMetrics, "preview.metrics");
-        Grid.SetRow(previewMetrics, 1);
-        footer.Children.Add(previewMetrics);
-        Grid.SetRow(footer, 2);
-        root.Children.Add(footer);
+        Grid.SetRow(previewMetrics, 2);
+        root.Children.Add(previewMetrics);
         card.Child = root;
         return card;
     }
 
     private UIElement BuildSettingsPane()
     {
-        var panel = new StackPanel { Spacing = 16, Padding = new Thickness(16), MaxWidth = 760, HorizontalAlignment = HorizontalAlignment.Left };
-        panel.Children.Add(Heading("压缩设置"));
+        var panel = new StackPanel { Spacing = 16, Padding = new Thickness(16), HorizontalAlignment = HorizontalAlignment.Stretch };
+        panel.Children.Add(new TextBlock { Text = "压缩设置", FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         presetBox.ItemsSource = AllPresets().Select(value => value.Name).ToList();
         presetBox.SelectedIndex = AllPresets().FindIndex(value => value.Id == selectedPreset.Id);
         presetBox.SelectionChanged += PresetSelectionChanged;
@@ -375,7 +442,8 @@ public sealed class MainWindow : Window
         targetSize.SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline;
         targetSize.ValueChanged += SettingsChanged;
         AutomationProperties.SetAutomationId(targetSize, "settings.targetSizeKB");
-        panel.Children.Add(SettingRow("每张不超过", targetSize, "单位为 KB，1 KB 按 1000 字节计算。"));
+        targetRow = SettingRow("每张不超过（KB）", targetSize);
+        panel.Children.Add(targetRow);
 
         resizeBox.ItemsSource = new[] { "保持原尺寸", "最长边", "固定宽度", "固定高度", "适合指定范围", "自动选择宽度" };
         resizeBox.SelectionChanged += SettingsChanged;
@@ -386,12 +454,14 @@ public sealed class MainWindow : Window
         widthBox.Maximum = 100_000;
         widthBox.ValueChanged += SettingsChanged;
         AutomationProperties.SetAutomationId(widthBox, "settings.width");
-        panel.Children.Add(SettingRow("宽度 / 最长边", widthBox, "“适合指定范围”会完整保留图片，不会裁切。"));
+        widthRow = SettingRow("宽度 / 最长边（像素）", widthBox);
+        panel.Children.Add(widthRow);
         heightBox.Minimum = 1;
         heightBox.Maximum = 100_000;
         heightBox.ValueChanged += SettingsChanged;
         AutomationProperties.SetAutomationId(heightBox, "settings.height");
-        panel.Children.Add(SettingRow("高度", heightBox));
+        heightRow = SettingRow("高度（像素）", heightBox);
+        panel.Children.Add(heightRow);
         noUpscale.Content = "小图片保持原尺寸";
         noUpscale.Checked += SettingsChanged;
         noUpscale.Unchecked += SettingsChanged;
@@ -408,7 +478,7 @@ public sealed class MainWindow : Window
         outputPanel.Children.Add(chooseOutput);
         panel.Children.Add(SettingRow("输出位置", outputPanel));
 
-        var advanced = new Expander { Header = "高级设置（始终生效）", IsExpanded = false };
+        var advanced = new Expander { Header = "高级设置 · 始终生效", IsExpanded = false, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
         AutomationProperties.SetAutomationId(advanced, "settings.advanced");
         var advancedPanel = new StackPanel { Spacing = 12, Padding = new Thickness(0, 10, 0, 4) };
         advancedPanel.Children.Add(new TextBlock { Text = "展开或收起只改变显示，已设置选项始终应用。", TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(Microsoft.UI.Colors.Gray) });
@@ -439,7 +509,9 @@ public sealed class MainWindow : Window
         savePreset.Click += async (_, _) => await SavePresetAsync();
         panel.Children.Add(savePreset);
         SyncControlsFromPreset();
-        return new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        var card = Card();
+        card.Child = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        return card;
     }
 
     private static UIElement ExplainedOption(CheckBox option, string automationId, string explanation)
@@ -472,8 +544,8 @@ public sealed class MainWindow : Window
 
     private static Border Card() => new()
     {
-        Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-        BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.LightGray),
+        Background = ComparisonPreview.Brush("CardBackgroundFillColorDefaultBrush"),
+        BorderBrush = ComparisonPreview.Brush("CardStrokeColorDefaultBrush"),
         BorderThickness = new Thickness(1),
         CornerRadius = new CornerRadius(12)
     };
@@ -492,27 +564,23 @@ public sealed class MainWindow : Window
 
     private static UIElement SettingRow(string title, UIElement control, string? description = null)
     {
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(170) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var label = new TextBlock { Text = title, FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 7, 12, 0), TextWrapping = TextWrapping.Wrap };
-        grid.Children.Add(label);
-        var stack = new StackPanel { Spacing = 5 };
+        var stack = new StackPanel { Spacing = 6, HorizontalAlignment = HorizontalAlignment.Stretch };
+        stack.Children.Add(new TextBlock { Text = title, FontSize = 14, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        if (control is FrameworkElement element) element.HorizontalAlignment = HorizontalAlignment.Stretch;
         stack.Children.Add(control);
-        if (!string.IsNullOrWhiteSpace(description)) stack.Children.Add(new TextBlock { Text = description, FontSize = 13, Foreground = new SolidColorBrush(Microsoft.UI.Colors.Gray), TextWrapping = TextWrapping.Wrap });
-        Grid.SetColumn(stack, 1);
-        grid.Children.Add(stack);
-        return grid;
+        if (!string.IsNullOrWhiteSpace(description)) stack.Children.Add(new TextBlock { Text = description, FontSize = 12, Foreground = ComparisonPreview.Brush("TextFillColorSecondaryBrush"), TextWrapping = TextWrapping.Wrap });
+        return stack;
     }
 
     private FrameworkElement BuildBatchSummary()
     {
-        var border = new Border { BorderThickness = new Thickness(0, 1, 0, 0), BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.LightGray), Padding = new Thickness(16, 9, 16, 9) };
+        var border = new Border { BorderThickness = new Thickness(0, 1, 0, 0), BorderBrush = ComparisonPreview.Brush("CardStrokeColorDefaultBrush"), Padding = new Thickness(16, 9, 16, 9) };
         var grid = new Grid();
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var left = new StackPanel { Spacing = 5 };
         batchStatus.Text = "添加图片后即可开始";
+        batchStatus.TextWrapping = TextWrapping.Wrap;
         AutomationProperties.SetAutomationId(batchStatus, "batch.status");
         left.Children.Add(batchStatus);
         batchProgress.Minimum = 0;
@@ -547,11 +615,11 @@ public sealed class MainWindow : Window
 
     private UIElement BuildEmptyWorkspace()
     {
-        var outer = new Grid { MaxWidth = 980, HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Center };
+        var outer = new Grid { MaxWidth = 900, HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 24, 0, 24) };
         var card = Card();
-        card.Padding = new Thickness(32);
+        card.Padding = new Thickness(24);
         var stack = new StackPanel { Spacing = 20 };
-        stack.Children.Add(new TextBlock { Text = "Squoosh Pro", FontSize = 38, FontWeight = Microsoft.UI.Text.FontWeights.Bold });
+        stack.Children.Add(new TextBlock { Text = "Squoosh Pro", FontSize = 30, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
         var chooseImages = new Button { Content = "选择图片", Padding = new Thickness(18, 10, 18, 10) };
         chooseImages.Click += async (_, _) => await ChooseImagesAsync();
@@ -572,21 +640,32 @@ public sealed class MainWindow : Window
         for (var index = 0; index < featured.Length; index++)
         {
             var preset = featured[index];
-            var button = new Button { Width = 260, Height = 82, Margin = new Thickness(0, 0, 10, 10), HorizontalContentAlignment = HorizontalAlignment.Left };
+            var button = new Button { MinHeight = 96, Padding = new Thickness(16), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            if (selectedPreset.Id == preset.Id) { button.BorderBrush = ComparisonPreview.Brush("AccentFillColorDefaultBrush"); button.BorderThickness = new Thickness(2); }
             var copy = new StackPanel { Spacing = 4 };
-            copy.Children.Add(new TextBlock { Text = preset.Name, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+            copy.Children.Add(new TextBlock { Text = preset.Name + (selectedPreset.Id == preset.Id ? " · 已选择" : ""), FontSize = 15, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
             copy.Children.Add(new TextBlock { Text = PresetDescription(preset), FontSize = 12, Foreground = new SolidColorBrush(Microsoft.UI.Colors.Gray), TextWrapping = TextWrapping.Wrap });
             button.Content = copy;
             AutomationProperties.SetAutomationId(button, $"empty.preset.{preset.Id}");
-            button.Click += (_, _) => { selectedPreset = preset.DeepClone(); SyncControlsFromPreset(); batchStatus.Text = $"已选择“{preset.Name}”，请添加图片"; };
+            button.Click += (_, _) => { selectedPreset = preset.DeepClone(); SyncControlsFromPreset(); batchStatus.Text = $"已选择“{preset.Name}”，请添加图片"; RefreshCompressionBody(); };
             Grid.SetColumn(button, index % 2);
             Grid.SetRow(button, index / 2);
             panel.Children.Add(button);
         }
         stack.Children.Add(panel);
+        stack.Children.Add(new TextBlock { Text = $"已选择“{selectedPreset.Name}”。添加图片后，点击“开始压缩”。", TextWrapping = TextWrapping.Wrap, Foreground = ComparisonPreview.Brush("AccentTextFillColorPrimaryBrush") });
+        panel.SizeChanged += (_, args) =>
+        {
+            var columns = args.NewSize.Width < 480 ? 1 : 2;
+            panel.ColumnDefinitions.Clear();
+            panel.RowDefinitions.Clear();
+            for (var i = 0; i < columns; i++) panel.ColumnDefinitions.Add(new ColumnDefinition());
+            for (var i = 0; i < (featured.Length + columns - 1) / columns; i++) panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            for (var i = 0; i < panel.Children.Count; i++) { Grid.SetColumn((FrameworkElement)panel.Children[i], i % columns); Grid.SetRow((FrameworkElement)panel.Children[i], i / columns); }
+        };
         card.Child = stack;
         outer.Children.Add(card);
-        return outer;
+        return new ScrollViewer { Content = outer, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
     }
 
     private static string PresetDescription(CompressionPreset preset) => preset.Id switch
@@ -638,6 +717,7 @@ public sealed class MainWindow : Window
 
     private async Task AddPathsAsync(IEnumerable<string> paths)
     {
+        if (isRunning) return;
         var existing = items.Select(value => value.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var path in paths.Where(File.Exists).Where(IsSupported))
         {
@@ -692,46 +772,67 @@ public sealed class MainWindow : Window
         if (refreshingQueue) return;
         if (queueList.SelectedItem is not QueueRow row) return;
         selectedItem = row.Item;
-        detailTabs.SelectedIndex = 0;
+        if (wideWorkspace == false) workspaceSelector.SelectedItem = workspaceSelector.Items[1];
         await SelectItemAsync(row.Item);
     }
 
     private async Task SelectItemAsync(WorkspaceItem item)
     {
         previewCancellation?.Cancel();
+        previewCancellation?.Dispose();
         previewCancellation = new CancellationTokenSource();
         var token = previewCancellation.Token;
         previewStatus.Text = "正在加载预览";
+        comparison.ShowLoading();
+        var entered = false;
         try
         {
-            var original = await engine.CreateDisplayPngAsync(item.Path, preferences.HardwarePreview ? 2400 : 1400, token);
-            originalImage.Source = await BitmapFromBytesAsync(original);
-            await Task.Delay(120, token);
+            await Task.Delay(220, token);
+            await previewGate.WaitAsync(token);
+            entered = true;
             var preset = ReadPresetFromControls();
             var key = PreviewKey(item, preset);
+            var stamp = File.GetLastWriteTimeUtc(item.Path).Ticks;
+            if (originalPreviewPath != item.Path || originalPreviewStamp != stamp)
+            {
+                var original = await engine.CreateDisplayPngAsync(item.Path, preferences.HardwarePreview ? 4096 : 2560, token);
+                var bitmap = await BitmapFromBytesAsync(original);
+                token.ThrowIfCancellationRequested();
+                comparison.SetOriginal(bitmap);
+                originalPreviewPath = item.Path;
+                originalPreviewStamp = stamp;
+            }
             var result = previewCache.Get(key) ?? await engine.EncodeAsync(item.Path, preset, token);
             token.ThrowIfCancellationRequested();
+            var decodedOutput = await BitmapFromBytesAsync(result.PreviewPng);
+            token.ThrowIfCancellationRequested();
+            if (selectedItem != item) return;
+            if (PreviewKey(item, preset) != key) throw new SquooshException("sourceChanged", "图片在预览期间发生了变化，请重新选择");
             previewCache.Put(key, result);
             selectedPreview = result;
             selectedPreviewKey = key;
             item.IsCached = true;
-            outputImage.Source = await BitmapFromBytesAsync(result.PreviewPng);
+            comparison.SetOutput(decodedOutput, result.Width, result.Height);
             previewStatus.Text = item.FileName;
             previewMetrics.Text = $"预计输出 {FormatBytes(result.Data.Length)} · 输出尺寸 {result.Width}×{result.Height} · 质量 {result.Quality}";
             RefreshQueueRow(item);
-            UpdatePreviewClip();
+            foreach (var other in items.Where(value => value != item && value.IsCached))
+            {
+                other.IsCached = previewCache.Contains(PreviewKey(other, preset));
+                RefreshQueueRow(other);
+            }
         }
         catch (OperationCanceledException) { }
         catch (Exception error)
         {
+            if (token.IsCancellationRequested || selectedItem != item) return;
             previewStatus.Text = "预览加载失败";
             previewMetrics.Text = FriendlyError(error);
+            comparison.Failed();
+            selectedPreview = null;
+            selectedPreviewKey = null;
         }
-    }
-
-    private void UpdatePreviewClip()
-    {
-        outputClip.Rect = new global::Windows.Foundation.Rect(0, 0, Math.Max(0, previewCanvas.ActualWidth * previewDivider.Value / 100d), Math.Max(0, previewCanvas.ActualHeight));
+        finally { if (entered) previewGate.Release(); }
     }
 
     private static async Task<BitmapImage> BitmapFromBytesAsync(byte[] data)
@@ -747,6 +848,7 @@ public sealed class MainWindow : Window
         stream.Seek(0);
         var bitmap = new BitmapImage();
         await bitmap.SetSourceAsync(stream);
+        if (bitmap.PixelWidth < 1 || bitmap.PixelHeight < 1) throw new InvalidOperationException("图片预览未能解码");
         return bitmap;
     }
 
@@ -790,6 +892,7 @@ public sealed class MainWindow : Window
         baseline.IsChecked = selectedPreset.FormatOptions.GetValueOrDefault("baseline", 0) != 0;
         outputLocation.Text = preferences.OutputParent ?? "默认：在第一张原图旁创建带时间的文件夹";
         syncingSettings = false;
+        UpdateSettingVisibility();
     }
 
     private CompressionPreset ReadPresetFromControls()
@@ -799,6 +902,7 @@ public sealed class MainWindow : Window
         preset.Output.Format = formatBox.SelectedIndex switch { 0 => CodecFormat.automatic, 1 => CodecFormat.mozjpeg, 2 => CodecFormat.oxipng, 3 => CodecFormat.webp, 4 => CodecFormat.avif, _ => preset.Output.Format };
         preset.Output.Strategy = strategyBox.SelectedIndex == 1 ? CompressionStrategy.targetBytes : CompressionStrategy.fixedQuality;
         preset.Output.Quality = Math.Clamp((int)Math.Round(qualitySlider.Value), 0, 100);
+        preset.Output.MinimumQuality = Math.Min(preset.Output.MinimumQuality, preset.Output.Quality);
         var kb = double.IsNaN(targetSize.Value) ? 150 : Math.Clamp((int)Math.Round(targetSize.Value), 1, 1_000_000);
         preset.Output.TargetBytes = kb * 1000;
         preset.Output.SafetyTargetBytes = Math.Max(1, preset.Output.TargetBytes.Value - Math.Min(5000, preset.Output.TargetBytes.Value / 20));
@@ -822,6 +926,7 @@ public sealed class MainWindow : Window
     {
         if (syncingSettings) return;
         qualityValue.Text = Math.Clamp((int)Math.Round(qualitySlider.Value), 0, 100).ToString();
+        UpdateSettingVisibility();
         InvalidatePreview();
     }
 
@@ -844,8 +949,15 @@ public sealed class MainWindow : Window
         selectedPreview = null;
         selectedPreviewKey = null;
         foreach (var item in items) item.IsCached = false;
-        RefreshQueue();
-        if (selectedItem is not null) _ = SelectItemAsync(selectedItem);
+        foreach (var item in items) RefreshQueueRow(item);
+        if (selectedItem is not null && !isRunning) _ = SelectItemAsync(selectedItem);
+    }
+
+    private void UpdateSettingVisibility()
+    {
+        if (targetRow is not null) targetRow.Visibility = strategyBox.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
+        if (widthRow is not null) widthRow.Visibility = resizeBox.SelectedIndex is 1 or 2 or 4 ? Visibility.Visible : Visibility.Collapsed;
+        if (heightRow is not null) heightRow.Visibility = resizeBox.SelectedIndex is 3 or 4 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async Task ChooseOutputAsync()
@@ -864,10 +976,13 @@ public sealed class MainWindow : Window
     {
         var name = new TextBox { Header = "预设名称", PlaceholderText = "例如：商品图 150 KB", Text = $"{selectedPreset.Name} 副本" };
         var notes = new TextBox { Header = "备注（可选）", PlaceholderText = "说明这个预设适合什么图片" };
+        AutomationProperties.SetAutomationId(name, "presets.save.name");
+        AutomationProperties.SetAutomationId(notes, "presets.save.notes");
         var panel = new StackPanel { Spacing = 12 };
         panel.Children.Add(name);
         panel.Children.Add(notes);
         var dialog = new ContentDialog { Title = "保存预设", Content = panel, PrimaryButtonText = "保存预设", CloseButtonText = "取消", XamlRoot = pageHost.XamlRoot };
+        AutomationProperties.SetAutomationId(dialog, "presets.save.dialog");
         if (await dialog.ShowAsync() != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(name.Text)) return;
         var preset = ReadPresetFromControls();
         preset.Id = $"user.{Guid.NewGuid():D}";
@@ -893,7 +1008,8 @@ public sealed class MainWindow : Window
         var token = batchCancellation.Token;
         SetRunningUi(true);
         var parent = preferences.OutputParent ?? Path.GetDirectoryName(items[0].Path)!;
-        currentOutputDirectory = CompressionEngine.CreateTimestampedDirectory(parent);
+        try { currentOutputDirectory = CompressionEngine.CreateTimestampedDirectory(parent); }
+        catch (Exception error) { isRunning = false; SetRunningUi(false); batchStatus.Text = $"无法创建输出文件夹：{FriendlyError(error)}"; return; }
         var report = new JobReport
         {
             PresetID = preset.Id,
@@ -901,10 +1017,12 @@ public sealed class MainWindow : Window
             State = JobState.running,
             Items = items.Select(item => new JobItemRecord { ItemID = item.Id, SourceFileName = item.FileName, InputBytes = item.InputBytes }).ToList()
         };
-        PersistReport(report);
         var completed = 0;
         try
         {
+            await previewGate.WaitAsync(token);
+            previewGate.Release();
+            PersistReport(report);
             foreach (var item in items.Where(value => value.State is FileState.queued or FileState.failed or FileState.cancelled))
             {
                 token.ThrowIfCancellationRequested();
@@ -947,9 +1065,14 @@ public sealed class MainWindow : Window
             foreach (var item in items.Where(value => value.State is not FileState.completed and not FileState.failed)) item.State = FileState.cancelled;
             batchStatus.Text = "已取消，已完成的文件仍保留";
         }
+        catch (Exception error)
+        {
+            report.State = JobState.completedWithErrors;
+            batchStatus.Text = FriendlyError(error);
+        }
         finally
         {
-            PersistReport(report);
+            try { PersistReport(report); } catch (Exception error) { batchStatus.Text = $"任务记录保存失败：{FriendlyError(error)}"; }
             isRunning = false;
             isPaused = false;
             SetRunningUi(false);
@@ -983,6 +1106,9 @@ public sealed class MainWindow : Window
         pauseButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         cancelButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         clearButton.IsEnabled = !running;
+        if (addImagesButton is not null) addImagesButton.IsEnabled = !running;
+        if (addFolderButton is not null) addFolderButton.IsEnabled = !running;
+        foreach (var control in new Control[] { presetBox, formatBox, strategyBox, qualitySlider, targetSize, resizeBox, widthBox, heightBox, noUpscale, metadataBox, progressive, optimizeCoding, baseline }) control.IsEnabled = !running;
         batchProgress.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
         if (running) { batchProgress.Value = 0; retryButton.Visibility = Visibility.Collapsed; openOutputButton.Visibility = Visibility.Collapsed; }
     }
@@ -991,8 +1117,7 @@ public sealed class MainWindow : Window
     {
         if (!isRunning) return;
         isPaused = !isPaused;
-        pauseButton.Label = isPaused ? "继续" : "暂停";
-        pauseButton.Icon = new SymbolIcon(isPaused ? Symbol.Play : Symbol.Pause);
+        pauseButton.Content = ToolLabel(isPaused ? "继续" : "暂停", isPaused ? Symbol.Play : Symbol.Pause);
         batchStatus.Text = isPaused ? "将在当前图片完成后暂停" : "正在继续压缩";
     }
 
@@ -1004,8 +1129,8 @@ public sealed class MainWindow : Window
         selectedItem = null;
         selectedPreview = null;
         selectedPreviewKey = null;
-        originalImage.Source = null;
-        outputImage.Source = null;
+        comparison.Clear();
+        originalPreviewPath = null;
         previewCache.Clear();
         batchStatus.Text = "添加图片后即可开始";
         currentOutputDirectory = null;
@@ -1020,35 +1145,56 @@ public sealed class MainWindow : Window
     private void ShowPresetsPage()
     {
         pageHost.Children.Clear();
-        var panel = new StackPanel { Spacing = 16, Padding = new Thickness(24), MaxWidth = 900, HorizontalAlignment = HorizontalAlignment.Left };
-        panel.Children.Add(new TextBlock { Text = "选择后会返回压缩页面。导出只包含你保存的预设，不包含系统预设。", TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(Microsoft.UI.Colors.Gray) });
+        var panel = PagePanel("预设", "选择常用方案，或保存适合自己的压缩设置。");
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         var import = new Button { Content = "导入预设…" };
         import.Click += async (_, _) => await ImportPresetsAsync();
         var export = new Button { Content = "导出我的预设…" };
+        AutomationProperties.SetAutomationId(import, "presets.import");
+        AutomationProperties.SetAutomationId(export, "presets.export");
         export.Click += async (_, _) => await ExportPresetsAsync();
         actions.Children.Add(import);
         actions.Children.Add(export);
         panel.Children.Add(actions);
+        var gallery = new Grid { ColumnSpacing = 12, RowSpacing = 12 };
         foreach (var preset in AllPresets())
         {
             var card = Card();
-            card.Padding = new Thickness(14);
-            var row = new Grid();
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            var copy = new StackPanel { Spacing = 4 };
-            copy.Children.Add(new TextBlock { Text = preset.Name, FontSize = 17, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-            copy.Children.Add(new TextBlock { Text = preset.Notes ?? PresetDescription(preset), TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(Microsoft.UI.Colors.Gray) });
-            row.Children.Add(copy);
-            var select = new Button { Content = "选择" };
-            select.Click += (_, _) => { selectedPreset = preset.DeepClone(); navigation.SelectedItem = navigation.MenuItems[0]; SyncControlsFromPreset(); };
-            Grid.SetColumn(select, 1);
-            row.Children.Add(select);
-            card.Child = row;
-            panel.Children.Add(card);
+            card.Padding = new Thickness(20);
+            var copy = new StackPanel { Spacing = 12 };
+            copy.Children.Add(new TextBlock { Text = preset.Kind == "user" ? "我的预设" : "常用方案", FontSize = 12, Foreground = ComparisonPreview.Brush("AccentTextFillColorPrimaryBrush") });
+            copy.Children.Add(new TextBlock { Text = preset.Name, FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+            copy.Children.Add(new TextBlock { Text = preset.Notes ?? PresetDescription(preset), TextWrapping = TextWrapping.Wrap, Foreground = ComparisonPreview.Brush("TextFillColorSecondaryBrush") });
+            var select = new Button { Content = selectedPreset.Id == preset.Id ? "已选择" : "使用预设", HorizontalAlignment = HorizontalAlignment.Stretch };
+            AutomationProperties.SetAutomationId(select, $"presets.use.{preset.Id}");
+            select.Click += (_, _) => { selectedPreset = preset.DeepClone(); navigation.SelectedItem = navigation.MenuItems[0]; SyncControlsFromPreset(); InvalidatePreview(); };
+            copy.Children.Add(select);
+            card.Child = copy;
+            gallery.Children.Add(card);
         }
-        pageHost.Children.Add(new ScrollViewer { Content = panel });
+        gallery.SizeChanged += (_, args) => LayoutGallery(gallery, args.NewSize.Width);
+        LayoutGallery(gallery, 0);
+        panel.Children.Add(gallery);
+        pageHost.Children.Add(PageScroll(panel));
+    }
+
+    private static StackPanel PagePanel(string title, string subtitle)
+    {
+        var panel = new StackPanel { Spacing = 20, Padding = new Thickness(24), MaxWidth = 1000, HorizontalAlignment = HorizontalAlignment.Left };
+        var heading = Heading(title);
+        AutomationProperties.SetAutomationId(heading, title switch { "预设" => "page.presets.title", "设置" => "page.settings.title", _ => "page.history.title" });
+        panel.Children.Add(heading);
+        panel.Children.Add(new TextBlock { Text = subtitle, TextWrapping = TextWrapping.Wrap, Foreground = ComparisonPreview.Brush("TextFillColorSecondaryBrush") });
+        return panel;
+    }
+    private static ScrollViewer PageScroll(UIElement content) => new() { Content = content, HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Top, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+    private static void LayoutGallery(Grid gallery, double width)
+    {
+        var columns = width >= 640 ? 2 : 1;
+        gallery.ColumnDefinitions.Clear(); gallery.RowDefinitions.Clear();
+        for (var i = 0; i < columns; i++) gallery.ColumnDefinitions.Add(new ColumnDefinition());
+        for (var i = 0; i < (gallery.Children.Count + columns - 1) / columns; i++) gallery.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        for (var i = 0; i < gallery.Children.Count; i++) { Grid.SetColumn((FrameworkElement)gallery.Children[i], i % columns); Grid.SetRow((FrameworkElement)gallery.Children[i], i / columns); }
     }
 
     private async Task ImportPresetsAsync()
@@ -1061,8 +1207,11 @@ public sealed class MainWindow : Window
         try
         {
             var text = await File.ReadAllTextAsync(file.Path);
-            var imported = JsonSerializer.Deserialize<List<CompressionPreset>>(text, JsonOptions.Default)
-                ?? [JsonSerializer.Deserialize<CompressionPreset>(text, JsonOptions.Default)!];
+            using var document = JsonDocument.Parse(text);
+            var imported = document.RootElement.ValueKind == JsonValueKind.Array
+                ? JsonSerializer.Deserialize<List<CompressionPreset>>(text, JsonOptions.Default) ?? []
+                : [JsonSerializer.Deserialize<CompressionPreset>(text, JsonOptions.Default) ?? throw new SquooshException("invalidPreset", "预设文件为空")];
+            foreach (var preset in imported) Presets.Validate(preset);
             foreach (var preset in imported.Where(value => value is not null))
             {
                 Presets.Validate(preset);
@@ -1089,7 +1238,7 @@ public sealed class MainWindow : Window
     private void ShowHistoryPage()
     {
         pageHost.Children.Clear();
-        var panel = new StackPanel { Spacing = 12, Padding = new Thickness(24), MaxWidth = 900, HorizontalAlignment = HorizontalAlignment.Left };
+        var panel = PagePanel("历史记录", "查看已经完成的压缩任务。");
         var jobs = UserStorage.LoadJobs();
         if (jobs.Count == 0) panel.Children.Add(new TextBlock { Text = "还没有压缩记录。", Foreground = new SolidColorBrush(Microsoft.UI.Colors.Gray) });
         foreach (var job in jobs)
@@ -1100,28 +1249,45 @@ public sealed class MainWindow : Window
             var failed = job.Items.Count(value => value.State == FileState.failed);
             var stack = new StackPanel { Spacing = 4 };
             stack.Children.Add(new TextBlock { Text = job.CreatedAt.LocalDateTime.ToString("yyyy-MM-dd HH:mm"), FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-            stack.Children.Add(new TextBlock { Text = $"{job.OutputDirectoryName} · 成功 {success} · 失败 {failed} · {job.State}", TextWrapping = TextWrapping.Wrap });
+            stack.Children.Add(new TextBlock { Text = $"成功 {success} 张 · 失败 {failed} 张", TextWrapping = TextWrapping.Wrap, Foreground = ComparisonPreview.Brush("TextFillColorSecondaryBrush") });
+            stack.Children.Add(new TextBlock { Text = job.OutputDirectoryName, TextWrapping = TextWrapping.Wrap });
             card.Child = stack;
             panel.Children.Add(card);
         }
-        pageHost.Children.Add(new ScrollViewer { Content = panel });
+        pageHost.Children.Add(PageScroll(panel));
     }
 
     private void ShowApplicationSettingsPage()
     {
         pageHost.Children.Clear();
-        var panel = new StackPanel { Spacing = 18, Padding = new Thickness(24), MaxWidth = 760, HorizontalAlignment = HorizontalAlignment.Left };
-        var recursive = new ToggleSwitch { Header = "读取子文件夹", IsOn = preferences.RecursiveFolders, OnContent = "开启", OffContent = "关闭" };
+        var panel = PagePanel("设置", "调整图片导入和预览体验。");
+        var recursive = new ToggleSwitch { IsOn = preferences.RecursiveFolders, OnContent = "", OffContent = "" };
         recursive.Toggled += (_, _) => { preferences.RecursiveFolders = recursive.IsOn; UserStorage.SavePreferences(preferences); };
-        panel.Children.Add(recursive);
-        var hardware = new ToggleSwitch { Header = "硬件加速预览", IsOn = preferences.HardwarePreview, OnContent = "开启", OffContent = "关闭" };
+        AutomationProperties.SetAutomationId(recursive, "settings.recursiveFolders");
+        panel.Children.Add(PreferenceCard("读取子文件夹", "添加文件夹时，同时读取里面的子文件夹。", recursive));
+        var hardware = new ToggleSwitch { IsOn = preferences.HardwarePreview, OnContent = "", OffContent = "" };
         AutomationProperties.SetAutomationId(hardware, "settings.hardwareAcceleration");
         hardware.Toggled += (_, _) => { preferences.HardwarePreview = hardware.IsOn; UserStorage.SavePreferences(preferences); if (selectedItem is not null) _ = SelectItemAsync(selectedItem); };
-        panel.Children.Add(hardware);
-        panel.Children.Add(new TextBlock { Text = "开启时由 WinUI 使用系统图形管线缩放预览；如果上次启动在预览初始化前异常结束，应用会自动关闭此选项。该设置不改变输出图片。", TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(Microsoft.UI.Colors.Gray) });
-        panel.Children.Add(new TextBlock { Text = "预览缓存最多保留 24 项或 128 MB，完成任务、清空或退出时会清理。", TextWrapping = TextWrapping.Wrap });
-        panel.Children.Add(new TextBlock { Text = "Squoosh Pro 0.2.0 · Windows 10/11 x64", Foreground = new SolidColorBrush(Microsoft.UI.Colors.Gray) });
-        pageHost.Children.Add(new ScrollViewer { Content = panel });
+        panel.Children.Add(PreferenceCard("硬件加速预览", "使用高精度预览。遇到启动异常时自动关闭，不影响导出图片。", hardware));
+        panel.Children.Add(new TextBlock { Text = "Squoosh Pro 0.3.0 · Windows 10/11 x64", Foreground = ComparisonPreview.Brush("TextFillColorSecondaryBrush") });
+        pageHost.Children.Add(PageScroll(panel));
+    }
+
+    private static Border PreferenceCard(string title, string description, ToggleSwitch toggle)
+    {
+        var card = Card(); card.Padding = new Thickness(20);
+        AutomationProperties.SetAutomationId(card, AutomationProperties.GetAutomationId(toggle) + ".card");
+        var row = new Grid { ColumnSpacing = 20 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var copy = new StackPanel { Spacing = 6 };
+        copy.Children.Add(new TextBlock { Text = title, FontSize = 16, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap });
+        copy.Children.Add(new TextBlock { Text = description, TextWrapping = TextWrapping.Wrap, Foreground = ComparisonPreview.Brush("TextFillColorSecondaryBrush") });
+        row.Children.Add(copy);
+        AutomationProperties.SetName(toggle, title);
+        toggle.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(toggle, 1); row.Children.Add(toggle); card.Child = row;
+        return card;
     }
 
     private async Task ShowMessageAsync(string title, string message)
@@ -1170,6 +1336,7 @@ public sealed class MainWindow : Window
         try
         {
             await CaptureVisualTreeAsync(output);
+            await File.WriteAllTextAsync(Path.Combine(testRenderDirectory, name + ".state.json"), JsonSerializer.Serialize(new { comparison.Split, comparison.IsReady }, JsonOptions.Default));
         }
         catch (Exception error)
         {

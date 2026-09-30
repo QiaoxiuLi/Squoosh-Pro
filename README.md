@@ -4,11 +4,16 @@ Squoosh Pro 是一款面向 macOS、Windows 10 和 Windows 11 的本地批量图
 
 [下载最新版本](https://github.com/QiaoxiuLi/Squoosh-Pro/releases/latest) · [Windows 使用说明](docs/USER_GUIDE_WINDOWS_ZH.md) · [macOS 使用说明](docs/USER_GUIDE_ZH.md)
 
+![Windows 工作台：图片列表、可拖动的前后对比预览和压缩设置](docs/images/windows-workspace.png)
+
+宽窗口可以一边查看图片，一边调整设置。缩小窗口后，图片、效果预览和压缩设置会切换为分区导航，不必挤在一起。
+
 ## 主要功能
 
 - 一次添加多张图片或整个文件夹，也可以直接拖入窗口。
 - 在图片列表中搜索文件名，点击任意图片查看压缩效果。
-- 使用滑杆对比原图与输出图，预览完成的结果会暂时缓存，正式导出时可直接复用。
+- 直接拖动画面中间的分界线，对比左侧原图和右侧输出；支持适应窗口、100% 像素查看、放大、缩小和拖动画面。
+- 宽窗口同时显示图片、预览和设置；小窗口自动切换为分区视图，预览完成的结果可缓存并直接用于导出。
 - 按质量压缩，或为每张图片设置明确的 KB 上限。
 - 按最长边、固定宽度、固定高度或指定范围等比例缩放，不会擅自裁切图片。
 - 保存带名称和备注的个人预设，并可导入或导出自己的预设。
@@ -29,23 +34,25 @@ Squoosh Pro 是一款面向 macOS、Windows 10 和 Windows 11 的本地批量图
 
 ### Windows 10 / 11
 
-1. 从 [Releases](https://github.com/QiaoxiuLi/Squoosh-Pro/releases/latest) 下载 `Squoosh-Pro-0.2.0-Windows-x64.zip` 和同名 `.sha256` 文件。
+1. 从 [Releases](https://github.com/QiaoxiuLi/Squoosh-Pro/releases/latest) 下载 `Squoosh-Pro-0.3.0-Windows-x64.zip` 和同名 `.sha256` 文件。
 2. 右键 ZIP 并选择“全部解压”。请保留解压后的完整文件夹，不能只复制 `SquooshPro.exe`。
 3. 双击 `SquooshPro.exe` 启动。
 
 Windows 版本支持 64 位 Windows 10 和 Windows 11。发布包已经包含所需运行组件，无需另行安装 .NET 或 Windows App SDK。
 
-当前 `0.2.0` 下载包尚未进行商业 Authenticode 代码签名，因此 Windows Defender SmartScreen 可能在首次启动时显示提醒。请只从本仓库的 Release 页面下载并核对 SHA-256；不要为运行本软件而关闭 Windows 安全中心。
+当前下载包尚未进行商业 Authenticode 代码签名，因此 Windows Defender SmartScreen 可能在首次启动时显示提醒。请只从本仓库的 Release 页面下载并核对 SHA-256；不要为运行本软件而关闭 Windows 安全中心。
 
 ### macOS
 
-macOS 版本支持 macOS 13 或更高版本，并同时支持 Apple 芯片和 Intel Mac。当前公开的 macOS `0.1.0 Beta 1` 为未公证测试版，可在 [历史版本](https://github.com/QiaoxiuLi/Squoosh-Pro/releases/tag/v0.1.0-beta.1) 下载。
+从 [Releases](https://github.com/QiaoxiuLi/Squoosh-Pro/releases/latest) 下载 `Squoosh-Pro-0.3.0-macOS-universal.zip`，解压后将 `Squoosh Pro.app` 放入“应用程序”。支持 macOS 13 或更高版本，安装包包含 Apple 芯片和 Intel Mac 的程序。
+
+当前 macOS 下载包尚未经过 Developer ID 签名和 Apple 公证。请只从本仓库下载，不要关闭系统安全检查。
 
 ## 快速开始
 
 1. 点击“添加图片”或“添加文件夹”，也可以把图片拖入窗口。
 2. 选择一个预设；普通照片可直接选择“JPEG（JPG）”。
-3. 点击图片查看预览，用对比滑杆检查清晰度。
+3. 点击图片查看预览，拖动画面里的分界线检查前后差异，用“100%”或放大按钮查看细节。
 4. 如有需要，在“压缩设置”中调整质量、KB 上限和图片尺寸。
 5. 点击“开始压缩”。
 6. 完成后点击“打开输出目录”。
@@ -77,7 +84,7 @@ Squoosh Pro 是独立项目，不是 Google、Microsoft 或 Apple 的官方产�
 本项目使用并感谢以下软件与平台组件：
 
 - [GoogleChromeLabs/squoosh](https://github.com/GoogleChromeLabs/squoosh) 的本地编解码资源，以及 MozJPEG/libjpeg-turbo、OxiPNG、libwebp、libavif 和 libaom。
-- Windows 版本使用 Magick.NET 14.17.1、ImageMagick、Microsoft Windows App SDK 1.6.250602001、Microsoft WebView2 SDK 1.0.2651.64、.NET Runtime 8.0.31 和 Microsoft Windows SDK 运行组件。
+- Windows 版本采用 WinUI 3，使用 Magick.NET / ImageMagick、Windows App SDK 2.5.1、WebView2、.NET Runtime 10.0.12，以及这些组件包含的开源依赖。完整名单与许可证收录在下载包中。
 - macOS 版本使用 SwiftUI、AppKit、WebKit、Core Image、ImageIO 和 Metal 等 macOS 系统框架。
 
 各组件的版权、版本、来源和完整许可文本见 [第三方公告](third_party/THIRD_PARTY_NOTICES.md)。Windows 下载包内也包含 `THIRD_PARTY_NOTICES.md` 和 `LICENSES` 文件夹，便于离线查阅。

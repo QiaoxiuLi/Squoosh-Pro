@@ -8,11 +8,11 @@ Squoosh Pro 是一款在 Mac 本地运行的批量图片压缩工具。图片不
 - Apple 芯片 Mac 或 Intel 芯片 Mac
 - 建议预留足够的磁盘空间存放压缩结果
 
-当前 Beta 安装包使用临时签名，尚未经过 Apple 公证。首次打开时，macOS 可能要求额外确认。请只从本项目的 GitHub Release 页面下载。
+当前 0.3.0 安装包使用临时签名，尚未经过 Apple 公证。首次打开时，macOS 可能要求额外确认。请只从本项目的 GitHub Release 页面下载。
 
 ## 下载和安装
 
-1. 在 GitHub Release 页面下载 `Squoosh-Pro-0.1.0-macOS-universal.zip`。
+1. 在 GitHub Release 页面下载 `Squoosh-Pro-0.3.0-macOS-universal.zip`。
 2. 双击 ZIP 文件解压。
 3. 将 `Squoosh Pro.app` 拖入“应用程序”文件夹。
 4. 第一次启动时，在 Finder 中右键点击 `Squoosh Pro.app`，选择“打开”，然后在系统提示中再次选择“打开”。
@@ -90,6 +90,10 @@ Squoosh Pro 是一款在 Mac 本地运行的批量图片压缩工具。图片不
 
 ## 预览、搜索和缓存
 
+- 宽窗口同时显示图片列表、预览和设置；窗口较小时，用“图片 / 预览 / 设置”切换。
+- 拖动画面中的竖直分界线：左侧为原图，右侧为输出。
+- “适应窗口”完整显示图片；“100%”按输出图片的真实像素查看，不是固定放大倍数。
+- 点击放大或缩小按钮，或使用触控板双指缩放。放大后拖动画面可以查看不同区域。
 - 图片较多时，可以使用列表顶部的搜索框按文件名查找图片。
 - 点击列表中的图片即可切换预览对象。
 - 预览完成后，图片列表会显示“已缓存”。如果设置和原图没有变化，正式导出时会复用该结果，避免重复压缩。
@@ -122,7 +126,7 @@ Squoosh Pro 是一款在 Mac 本地运行的批量图片压缩工具。图片不
 Release 页面同时提供 `.sha256` 文件。需要校验时，可以在“终端”中进入下载目录后运行：
 
 ```bash
-shasum -a 256 -c Squoosh-Pro-0.1.0-macOS-universal.zip.sha256
+shasum -a 256 -c Squoosh-Pro-0.3.0-macOS-universal.zip.sha256
 ```
 
 显示 `OK` 表示下载文件与发布文件一致。
@@ -147,7 +151,11 @@ AVIF 的编码计算量通常更高，尤其是大尺寸图片。兼容性或速
 
 ### Intel Mac 能否使用
 
-安装包同时包含 Apple 芯片和 Intel 的可执行代码。当前版本已完成通用二进制构建检查，但发布前没有在真实 Intel Mac 上完成运行测试，因此仍将其标记为 Beta 版本。
+安装包同时包含 Apple 芯片和 Intel 的可执行代码。当前版本已完成通用二进制构建检查，并在 Apple 芯片 Mac 上运行验证；尚未在真实 Intel Mac 上完成运行测试，不能把通用构建检查当作 Intel 实机验证。
+
+## 第三方许可
+
+本软件是独立项目，不是 Google 或 Apple 的官方产品。图片编码使用的 Squoosh、MozJPEG、OxiPNG、libwebp、libavif 和 libaom 组件保留各自的版权和许可证。完整说明见仓库的 `third_party/THIRD_PARTY_NOTICES.md`；应用包的资源目录中也包含 `ThirdPartyLicenses`，便于离线查看。
 
 ## 反馈问题
 

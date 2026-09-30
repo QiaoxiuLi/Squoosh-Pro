@@ -4,11 +4,11 @@ The Windows application is implemented under `apps/windows`.
 
 ## Platform
 
-- UI: WinUI 3 with Windows App SDK 1.6
-- Language: C# on .NET 8
+- UI: WinUI 3 with Windows App SDK 2.5.1; Fluent controls, Mica where available, opaque fallback on older systems
+- Language: C# on .NET 10, SDK 10.0.401 and self-contained runtime 10.0.12
 - Package type: unpackaged, self-contained x64 desktop application
 - Minimum target: Windows 10 version 1809
-- Verified systems: Windows 10 10.0.19045.6456 and Windows 11 10.0.26200.9457
+- Verified systems: Windows 10 10.0.19045.6466 and Windows 11 10.0.26200.9457
 - Image engine: Magick.NET-Q8-x64 14.17.1
 
 ## Projects
@@ -20,6 +20,8 @@ The Windows application is implemented under `apps/windows`.
 
 ## Release Boundary
 
-The 0.2.0 Beta 1 package is x64 only. It contains the .NET runtime, Windows App SDK runtime, and image codec dependencies, so end users do not install a separate runtime. It is not Authenticode signed and can trigger SmartScreen.
+The 0.3.0 package is x64 only. It contains the .NET runtime, Windows App SDK runtime, and image codec dependencies, so end users do not install a separate runtime. It is not Authenticode signed and can trigger SmartScreen.
+
+The workspace uses three permanent panes. Compact windows select one pane through SelectorBar instead of reparenting controls. Comparison images share geometry, with an in-canvas draggable divider, true pixel zoom and pan. Gestures do not invoke encoding. Preview work is debounced and serialized; successful results enter a bounded cache for export reuse. The tests use stable automation IDs and isolated data directories.
 
 Windows ARM64, a signed installer, Microsoft Store packaging, automatic updates, and long-duration performance profiling remain future work. They are not represented as completed.

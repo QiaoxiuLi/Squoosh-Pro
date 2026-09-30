@@ -144,6 +144,7 @@ final class AppModel: ObservableObject {
     private let nativeCodecHost = NativeAVIFCodecHost()
     private let coordinator = JobCoordinator()
     private var previewTask: Task<Void, Never>?
+    private var sourcePreviewFingerprint: SourceFingerprint?
     private var batchTask: Task<Void, Never>?
     private var currentWorkerRequest: UUID?
     private var store: AtomicJSONStore?
@@ -152,11 +153,21 @@ final class AppModel: ObservableObject {
     private var previewCache = PreviewResultCache()
     private var previewRenderer: PreviewRenderer
     private var startupGuardTask: Task<Void, Never>?
+    private let validationOnly: Bool
 
     private static let hardwareAccelerationPreferenceKey = "preview.hardwareAccelerationEnabled"
     private static let hardwareAccelerationStartupMarkerKey = "preview.hardwareAccelerationStartupInProgress"
 
-    init() {
+    init(validationOnly: Bool = false, validationStore: AtomicJSONStore? = nil) {
+        self.validationOnly = validationOnly
+        if validationOnly {
+            hardwareAccelerationEnabled = false
+            hardwareAccelerationStatus = "兼容模式"
+            previewRenderer = PreviewRenderer(requestHardwareAcceleration: false)
+            store = validationStore
+            if let store { recoveryStore = SecurityScopedRecoveryStore(store: store) }
+            return
+        }
         let acceleration = Self.makeStartupPreviewRenderer()
         hardwareAccelerationEnabled = acceleration.enabled
         hardwareAccelerationStatus = acceleration.status
@@ -296,6 +307,8 @@ final class AppModel: ObservableObject {
             hardwareAccelerationEnabled = false
             hardwareAccelerationStatus = "使用兼容模式渲染预览"
         }
+        sourcePreview = nil
+        sourcePreviewFingerprint = nil
         settingsDidChange()
     }
 
@@ -319,13 +332,14 @@ final class AppModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 150_000_000)
             guard !Task.isCancelled else { return }
             do {
-                async let sourceImage = Task.detached(priority: .userInitiated) { try renderer.render(url: url) }.value
-                async let sourceFingerprint = Task.detached(priority: .utility) { try SourceFingerprint.capture(url: url) }.value
-                let renderedSource = try await sourceImage
-                guard !Task.isCancelled, selectedItemID == itemID else { return }
-                sourcePreview = NSImage(cgImage: renderedSource, size: .zero)
-
-                let fingerprint = try await sourceFingerprint
+                let fingerprint = try await Task.detached(priority: .utility) { try SourceFingerprint.capture(url: url) }.value
+                guard !Task.isCancelled else { return }
+                if sourcePreview == nil || sourcePreviewFingerprint != fingerprint {
+                    let renderedSource = try await Task.detached(priority: .userInitiated) { try renderer.render(url: url) }.value
+                    guard !Task.isCancelled, selectedItemID == itemID else { return }
+                    sourcePreview = NSImage(cgImage: renderedSource, size: .zero)
+                    sourcePreviewFingerprint = fingerprint
+                }
                 guard !Task.isCancelled else { return }
                 let result: EncodedImageResult
                 if let cached = cachedResult(for: itemID, preset: preset, fingerprint: fingerprint) {
@@ -343,7 +357,7 @@ final class AppModel: ObservableObject {
                 previewQuality = result.quality
             } catch is CancellationError {
             } catch {
-                guard selectedItemID == itemID, selectedPreset == preset else { return }
+                guard !Task.isCancelled, selectedItemID == itemID, selectedPreset == preset else { return }
                 previewError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 outputPreview = nil
             }
@@ -384,7 +398,9 @@ final class AppModel: ObservableObject {
         previewTask?.cancel()
         batchTask?.cancel()
         startupGuardTask?.cancel()
-        UserDefaults.standard.set(false, forKey: Self.hardwareAccelerationStartupMarkerKey)
+        if !validationOnly {
+            UserDefaults.standard.set(false, forKey: Self.hardwareAccelerationStartupMarkerKey)
+        }
         clearPreviewCache()
         Task {
             await codecHost.shutdown()

@@ -32,6 +32,7 @@ let package = Package(
         .executableTarget(name: "SquooshNativeCodecWorker", dependencies: ["SquooshCore"]),
         .executableTarget(name: "SquooshNativeCodecCheck", dependencies: ["SquooshCore", "SquooshNativeCodecHost"]),
         .testTarget(name: "SquooshCoreTests", dependencies: ["SquooshCore"]),
+        .testTarget(name: "SquooshPreviewTests", dependencies: ["SquooshPro", "SquooshCore"]),
     ],
     swiftLanguageModes: [.v5]
 )

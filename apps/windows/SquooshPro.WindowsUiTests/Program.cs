@@ -19,6 +19,7 @@ if (args.Length < 2)
 }
 
 var executable = Path.GetFullPath(args[0]);
+Console.OutputEncoding = Encoding.UTF8;
 var artifactBase = Path.GetFullPath(args[1]);
 Directory.CreateDirectory(artifactBase);
 var artifactRoot = Path.Combine(artifactBase, $"run-{DateTimeOffset.Now:yyyyMMdd-HHmmss}");
@@ -43,7 +44,7 @@ async Task CaptureRenderedState(string name)
     var imagePath = Path.Combine(renderDirectory, name + ".png");
     var errorPath = Path.Combine(renderDirectory, name + ".error.txt");
     await File.WriteAllTextAsync(request, DateTimeOffset.Now.ToString("O"));
-    var completed = WaitUntil(() => File.Exists(imagePath) || File.Exists(errorPath), TimeSpan.FromSeconds(20));
+    var completed = WaitUntil(() => !File.Exists(request) && (File.Exists(imagePath) || File.Exists(errorPath)), TimeSpan.FromSeconds(20));
     if (!completed)
     {
         Record(name + " visual render", false, "The application did not answer the render request");
@@ -60,11 +61,6 @@ async Task CaptureRenderedState(string name)
 
 try
 {
-    foreach (var process in Process.GetProcessesByName("SquooshPro"))
-    {
-        try { process.Kill(true); process.WaitForExit(5000); } catch { }
-    }
-
     await CreateInputPng(input);
     var sourceHash = await Hash(input);
     app = Process.Start(new ProcessStartInfo(executable)
@@ -76,7 +72,8 @@ try
     var window = WaitForWindow(app.Id, TimeSpan.FromSeconds(25));
     Record("main window created", window is not null, window?.Current.Name);
     if (window is null) throw new InvalidOperationException("Main window was not available to UI Automation");
-    var hwnd = new IntPtr(window.Current.NativeWindowHandle);
+    var hwnd = GetAncestor(new IntPtr(window.Current.NativeWindowHandle), 2);
+    window = AutomationElement.FromHandle(hwnd);
     WaitUntil(() => GetWindowRect(hwnd, out var bounds) && bounds.Right - bounds.Left > 500 && bounds.Bottom - bounds.Top > 400, TimeSpan.FromSeconds(10));
 
     AutomationElement? search = null;
@@ -92,14 +89,31 @@ try
     var previewStatus = Find(window, "preview.status");
     var previewReady = WaitUntil(() =>
     {
-        previewStatus = Find(window, "preview.status");
-        return previewStatus is not null && !previewStatus.Current.Name.Contains("正在加载");
+        previewStatus = Find(window, "preview.ready");
+        return previewStatus is not null && previewStatus.Current.Name.StartsWith("预览已加载");
     }, TimeSpan.FromSeconds(35));
     Record("preview rendered", previewReady, previewStatus?.Current.Name);
+    if (!previewReady) throw new InvalidOperationException("Decoded comparison images were not ready: " + Find(window, "preview.metrics")?.Current.Name);
+    var zoomValue = Find(window, "preview.zoomValue")?.Current.Name;
+    Invoke(Find(window, "preview.zoomIn"));
+    Record("zoom in updates scale", WaitUntil(() => Find(window, "preview.zoomValue")?.Current.Name != zoomValue, TimeSpan.FromSeconds(5)));
+    Invoke(Find(window, "preview.actualSize"));
+    Record("100 percent is pixel scale", WaitUntil(() => Find(window, "preview.zoomValue")?.Current.Name == "预览缩放 100%", TimeSpan.FromSeconds(5)));
+    Invoke(Find(window, "preview.zoomOut"));
+    Record("zoom out updates scale", WaitUntil(() => Find(window, "preview.zoomValue")?.Current.Name == "预览缩放 80%", TimeSpan.FromSeconds(5)));
+    Invoke(Find(window, "preview.fit"));
+    if (divider is not null)
+    {
+        SetForegroundWindow(hwnd);
+        var bounds = divider.Current.BoundingRectangle;
+        DragPointer((int)(bounds.Left + bounds.Width / 2), (int)(bounds.Top + bounds.Height / 2), (int)(bounds.Left + bounds.Width / 2 + 70), (int)(bounds.Top + bounds.Height / 2));
+        if (divider.TryGetCurrentPattern(RangeValuePattern.Pattern, out var changed) && changed is RangeValuePattern changedRange)
+            Record("inline divider supports pointer drag", changedRange.Current.Value > 75, $"value={changedRange.Current.Value}; handle={bounds}");
+    }
     Capture(hwnd, Path.Combine(artifactRoot, "01-workspace-desktop.png"));
     await CaptureRenderedState("01-workspace");
 
-    Invoke(FindByName(window, "压缩设置"));
+    Invoke(Find(window, "workspace.settingsTab"));
     AutomationElement? targetSize = null;
     AutomationElement? quality = null;
     AutomationElement? savePreset = null;
@@ -112,7 +126,26 @@ try
     }, TimeSpan.FromSeconds(8));
     Record("target size setting", targetSize is not null);
     Record("quality slider setting", quality is not null);
+    if (quality?.TryGetCurrentPattern(RangeValuePattern.Pattern, out var qualityPattern) == true && qualityPattern is RangeValuePattern qualityRange)
+    {
+        qualityRange.SetValue(20);
+        Invoke(Find(window, "workspace.previewTab"));
+        Thread.Sleep(300);
+        Record("low quality slider can preview", WaitUntil(() => Find(window, "preview.ready")?.Current.Name.StartsWith("预览已加载") == true, TimeSpan.FromSeconds(45)), Find(window, "preview.metrics")?.Current.Name);
+        Invoke(Find(window, "workspace.settingsTab"));
+        qualityRange.SetValue(75);
+    }
     Record("save preset command", savePreset is not null);
+    Invoke(savePreset);
+    AutomationElement? presetName = null;
+    Record("save preset dialog opens", WaitUntil(() => (presetName = Find(window, "presets.save.name")) is not null, TimeSpan.FromSeconds(8)));
+    if (presetName?.TryGetCurrentPattern(ValuePattern.Pattern, out var namePattern) == true && namePattern is ValuePattern nameValue) nameValue.SetValue("UI validation preset");
+    var presetNotes = Find(window, "presets.save.notes");
+    if (presetNotes?.TryGetCurrentPattern(ValuePattern.Pattern, out var notesPattern) == true && notesPattern is ValuePattern notesValue) notesValue.SetValue("Saved through the application dialog");
+    var saveDialog = Find(window, "presets.save.dialog") ?? window;
+    Invoke(saveDialog.FindFirst(TreeScope.Descendants, new AndCondition(new PropertyCondition(AutomationElement.NameProperty, "保存预设"), new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button))));
+    var savedPresetsPath = Path.Combine(artifactRoot, "app-data", "presets.json");
+    Record("preset name and notes persist", WaitUntil(() => File.Exists(savedPresetsPath) && File.ReadAllText(savedPresetsPath).Contains("UI validation preset") && File.ReadAllText(savedPresetsPath).Contains("Saved through the application dialog"), TimeSpan.FromSeconds(8)));
     var advanced = Find(window, "settings.advanced");
     if (advanced?.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var expandObject) == true && expandObject is ExpandCollapsePattern expand)
         expand.Expand();
@@ -125,14 +158,15 @@ try
     Record("advanced option explanation opens", explanationVisible);
     Capture(hwnd, Path.Combine(artifactRoot, "02-compression-settings-desktop.png"));
     await CaptureRenderedState("02-compression-settings");
-    Invoke(FindByName(window, "效果预览"));
+    Invoke(Find(window, "workspace.previewTab"));
     Thread.Sleep(300);
 
     SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 920, 680, 0x0004 | 0x0010);
     Thread.Sleep(800);
     Capture(hwnd, Path.Combine(artifactRoot, "03-compact-desktop.png"));
     Record("compact window keeps start command", Find(window, "toolbar.start") is not null);
-    var compactOutputLabel = FindByName(window, "输出");
+    Invoke(Find(window, "workspace.previewTab"));
+    var compactOutputLabel = Find(window, "preview.outputLabel");
     GetWindowRect(hwnd, out var compactBounds);
     var compactLabelBounds = compactOutputLabel?.Current.BoundingRectangle;
     var compactLabelVisible = compactLabelBounds is { Width: > 0, Height: > 0 }
@@ -140,6 +174,18 @@ try
         && compactLabelBounds.Value.Right <= compactBounds.Right;
     Record("compact preview labels remain visible", compactLabelVisible, compactLabelBounds?.ToString());
     await CaptureRenderedState("03-compact");
+
+    foreach (var size in new[] { (1280, 800), (760, 540), (640, 480), (1500, 680) })
+    {
+        SetWindowPos(hwnd, IntPtr.Zero, 0, 0, size.Item1, size.Item2, 0x0004 | 0x0010);
+        Thread.Sleep(600);
+        Invoke(Find(window, "workspace.previewTab"));
+        var comparison = Find(window, "preview.comparison");
+        var fitCommand = Find(window, "preview.fit");
+        var actualCommand = Find(window, "preview.actualSize");
+        Record($"preview controls fit {size.Item1}x{size.Item2}", IsInside(window, fitCommand) && IsInside(window, actualCommand) && IsInside(window, comparison), $"window={window.Current.BoundingRectangle}; fit={fitCommand?.Current.BoundingRectangle}; actual={actualCommand?.Current.BoundingRectangle}; comparison={comparison?.Current.BoundingRectangle}");
+        await CaptureRenderedState($"layout-{size.Item1}x{size.Item2}");
+    }
 
     var settingsNav = Find(window, "nav.settings");
     Invoke(settingsNav);
@@ -150,6 +196,32 @@ try
         Record("hardware acceleration defaults on", toggle.Current.ToggleState == ToggleState.On, toggle.Current.ToggleState.ToString());
     Capture(hwnd, Path.Combine(artifactRoot, "04-settings-desktop.png"));
     await CaptureRenderedState("04-settings");
+    Record("settings heading and toggle fit wide window", IsInside(window, Find(window, "page.settings.title")) && IsInside(window, hardware));
+    SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 640, 480, 0x0004 | 0x0010);
+    Thread.Sleep(500);
+    Record("settings heading and toggle fit compact window", IsInside(window, Find(window, "page.settings.title")) && IsInside(window, Find(window, "settings.hardwareAcceleration")));
+    await CaptureRenderedState("settings-640x480");
+    Invoke(Find(window, "nav.presets"));
+    Thread.Sleep(500);
+    Record("preset commands fit compact window", IsInside(window, Find(window, "presets.import")) && IsInside(window, Find(window, "presets.export")));
+    await CaptureRenderedState("presets-640x480");
+    SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 1500, 680, 0x0004 | 0x0010);
+    Thread.Sleep(500);
+
+    foreach (var preset in new[] { "system.lossless-png", "system.modern-webp", "system.compact-avif", "system.website-jpeg" })
+    {
+        Invoke(Find(window, "nav.presets"));
+        AutomationElement? use = null;
+        WaitUntil(() => (use = Find(window, "presets.use." + preset)) is not null, TimeSpan.FromSeconds(8));
+        Invoke(use);
+        Thread.Sleep(500);
+        Invoke(Find(window, "workspace.previewTab"));
+        Record("decoded preview " + preset, WaitUntil(() => Find(window, "preview.ready")?.Current.Name.StartsWith("预览已加载") == true, TimeSpan.FromSeconds(90)), Find(window, "preview.metrics")?.Current.Name);
+        await CaptureRenderedState("format-" + preset);
+    }
+    Invoke(Find(window, "nav.presets"));
+    WaitUntil(() => Find(window, "presets.use.system.web-jpeg-150kb") is not null, TimeSpan.FromSeconds(8));
+    Invoke(Find(window, "presets.use.system.web-jpeg-150kb"));
 
     Invoke(Find(window, "nav.compress"));
     Thread.Sleep(500);
@@ -196,11 +268,35 @@ static AutomationElement? WaitForWindow(int processId, TimeSpan timeout)
     WaitUntil(() =>
     {
         result = AutomationElement.RootElement.FindFirst(TreeScope.Children, new PropertyCondition(AutomationElement.ProcessIdProperty, processId));
-        result ??= AutomationElement.RootElement.FindFirst(TreeScope.Children, new PropertyCondition(AutomationElement.NameProperty, "Squoosh Pro"));
         return result is not null;
     }, timeout);
     return result;
 }
+
+static bool IsInside(AutomationElement window, AutomationElement? element)
+{
+    if (element is null || element.Current.IsOffscreen) return false;
+    var container = window.Current.BoundingRectangle; var rect = element.Current.BoundingRectangle;
+    return rect.Width > 0 && rect.Height > 0 && rect.Left >= container.Left && rect.Top >= container.Top && rect.Right <= container.Right && rect.Bottom <= container.Bottom;
+}
+
+static void DragPointer(int x, int y, int toX, int toY)
+{
+    void Input(uint flags, int px = 0, int py = 0)
+    {
+        var input = new NativeInput { Type = 0, Mouse = new NativeMouseInput { Flags = flags, X = px, Y = py } };
+        if (SendInput(1, [input], Marshal.SizeOf<NativeInput>()) != 1) throw new InvalidOperationException("Windows rejected pointer input");
+    }
+    void Move(int px, int py) => Input(0x8001, px * 65535 / Math.Max(1, GetSystemMetrics(0) - 1), py * 65535 / Math.Max(1, GetSystemMetrics(1) - 1));
+    Move(x, y); Thread.Sleep(100); Input(0x0002);
+    for (var i = 1; i <= 20; i++) { Move(x + (toX - x) * i / 20, y + (toY - y) * i / 20); Thread.Sleep(25); }
+    Input(0x0004); Thread.Sleep(200);
+}
+
+[DllImport("user32.dll")] static extern uint SendInput(uint count, NativeInput[] input, int size);
+[DllImport("user32.dll")] static extern int GetSystemMetrics(int index);
+[DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+[DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hwnd);
 
 static AutomationElement? Find(AutomationElement root, string automationId) =>
     root.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, automationId));
@@ -322,5 +418,9 @@ static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, i
 static extern bool PrintWindow(IntPtr hwnd, IntPtr deviceContext, uint flags);
 
 record struct RECT(int Left, int Top, int Right, int Bottom);
+[StructLayout(LayoutKind.Sequential)]
+struct NativeInput { public uint Type; public NativeMouseInput Mouse; }
+[StructLayout(LayoutKind.Sequential)]
+struct NativeMouseInput { public int X, Y; public uint Data, Flags, Time; public UIntPtr ExtraInfo; }
 sealed record UiCheck(string Name, bool Passed, string? Detail);
 sealed record UiTestResult(string OperatingSystem, DateTimeOffset CompletedAt, IReadOnlyList<UiCheck> Checks);

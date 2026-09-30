@@ -23,19 +23,19 @@ Run the generated-image core checks:
 Build the self-contained release and then run the GUI test from a signed-in desktop:
 
 ~~~powershell
-.\scripts\windows\build-release.ps1 -Version 0.2.0
-.\scripts\windows\run-ui-tests.ps1 -ApplicationPath .\Artifacts\WindowsRelease\Squoosh-Pro-0.2.0-Windows-x64\SquooshPro.exe
+.\scripts\windows\build-release.ps1 -Version 0.3.0
+.\scripts\windows\run-ui-tests.ps1 -ApplicationPath .\Artifacts\WindowsRelease\Squoosh-Pro-0.3.0-Windows-x64\SquooshPro.exe
 ~~~
 
 The Windows core runner checks built-in presets, resize math, no-upscale behavior, strict decimal 150 KB JPEG, JPEG/PNG/WebP/AVIF signature and decode verification, atomic commit, source SHA-256 preservation, conflict renaming, and bounded cache eviction.
 
-The UI runner imports a generated image through a test-only launch argument, then exercises search, preview selection, comparison slider, compression settings, preset-save entry, 920×680 compact layout, hardware acceleration, batch compression, byte limit, output dimensions, decode verification, source preservation, and completion state. For each important state, the app renders its WinUI visual tree into a PNG. The test requires minimum dimensions, nonwhite content, and color variation, preventing a blank capture from passing.
+The UI runner imports a generated image through a test-only launch argument, then exercises search, decoded previews, native SendInput divider dragging, true 100%/zoom controls, compression settings, preset dialog/name/notes persistence, compact/wide resizing, settings, four-format previews, batch export, byte limit, output dimensions, decode verification, source preservation, and completion. Sizes cover 640×480 through 1500×680. For important states, the app renders its WinUI visual tree into a PNG. The runner waits until the render request is complete before checking minimum dimensions, nonwhite content, and color variation. It closes only the app instance it started.
 
 Remote execution must still start the runner in the existing interactive Windows session. SSH is used only to copy files and invoke the configured test command; no remote-control software or Windows-hosted coding agent is required.
 
 ## Full Xcode Matrix
 
-The checked-in XCTest sources cover pure core behavior and generated files. XCUITest must additionally cover image and folder selection, Finder drag and drop, comparison divider, quality and byte fields, advanced settings, preset save, batch start, pause/resume/cancel, failures, output opening, recovery, light/dark appearance, keyboard access, accessibility identifiers, and narrow/wide windows.
+The checked-in XCTest sources cover core behavior and generated files, native comparison layer pixels/geometry, real SwiftUI hosting at four sizes, live preview selection, source changes, cache and export. XCUITest must additionally cover complete user interaction with image and folder selection, Finder drag and drop, comparison gestures, settings, preset save, batch start, pause/resume/cancel, failures, output opening, recovery, appearance and keyboard access. Hosting/component tests are not described as full XCUITest.
 
 Performance acceptance requires Instruments or equivalent measurement for 1000 imported paths, 100 previews, 500 synthetic encodes, 48MP processing, cancellation recovery, and bounded worker memory. These are release gates, not claims made from source inspection.
 

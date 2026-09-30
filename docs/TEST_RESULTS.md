@@ -1,5 +1,45 @@
 # Test Results
 
+## 0.3.0: 2026-09-29
+
+### Environment
+
+- macOS 26.6.2 (25G83), Apple Silicon, Xcode 27.0; release app/helper build as Universal 2.
+- Windows 10 22H2, 10.0.19045.6466, x64.
+- Windows 11 25H2, 10.0.26200.9457, x64.
+- Isolated .NET SDK 10.0.401, runtime 10.0.12, Windows App SDK 2.5.1 and Magick.NET 14.17.1. Existing machine SDKs were not replaced.
+- Remote Windows testing used only the user-authorized SSH route, without remote Codex or remote-control software.
+
+### Current Passed Checks
+
+| Gate | Evidence |
+| --- | --- |
+| Windows core | Nine check groups on each OS: presets, resize/no-upscale, strict decimal KB, four-format encode/decode/signature, atomic commit, conflict rename, source preservation and bounded cache |
+| Windows native UI | 52 targeted UI Automation/visual checks per OS: decoded preview, zoom, native pointer drag, preset dialog/name/notes persistence, help popup, settings, compact/wide switching, four-format preview and batch export |
+| Windows layout | 640×480, 760×540, 920×680, 1280×800 and 1500×680 outer-window sizes; preview controls stay inside the window; preset/settings controls also checked at 640×480 |
+| Windows strict-size GUI export | 142019-byte JPEG, 999×636 pixels, successful re-decode, source SHA-256 unchanged on both systems |
+| macOS XCTest | 18 tests: 12 core and 6 preview/application cases; actual layer pixels verify original-left/output-right; fit, backing-scale-aware 100%, zoom, portrait/wide geometry, selection, cache/export and changed-source invalidation |
+| macOS SwiftUI hosting | Real ContentView/NSHostingView at 1400×900, 960×680, 720×480 and 1400×480; native comparison view stays within the workspace. These are component/hosting tests, not full-app XCUITest |
+| macOS integration | Core executable checks, four local WKWebView codecs and offline CSP, codec cancellation/rebuild, native 48MP AVIF helper and interruption |
+| Shared worker | Six codec/schema tests |
+| Protected data | SHA-256 checks for all 31 protected originals and 30 existing results remain unchanged |
+| macOS package | Both app and helper contain arm64/x86_64 slices; deep ad-hoc signature verification; native arm64 app launch |
+
+Final per-run JSON results and rendered images are retained locally under `Artifacts/`. Repository screenshots use generated test artwork, not private originals.
+
+The final scripted Windows publish was tested directly on both systems, including Windows 10 extraction of the complete ZIP. ZIP SHA-256: `80fb168e71b4520126b2bb26a29b0ef6656f527c4874ed926491e019982a7fd8`; application DLL SHA-256: `806dac7f4abe2d13889fa11481fb8a0263a976e786c2d443f569127a2e2999ae`. This is the published package, not the earlier candidate whose assembly metadata differed.
+
+### Limits and Corrected Test Failures
+
+- Compact-to-wide TabView reparenting caused a real WinUI crash during development. The final implementation keeps all panels under a fixed parent and switches SelectorBar visibility instead; repeated resizing passes.
+- The pointer test originally used cursor repositioning and an insufficient movement threshold. It now injects native SendInput mouse movement and requires more than ten percentage points of divider movement; both OS runs move from 65% to about 79.6%.
+- On Windows 10, a test attempted to read a PNG before the application had finished writing it. The runner now waits for request completion as well as image existence; this does not bypass image analysis or the decode gate.
+- Mica is compositor content and is not included in RenderTargetBitmap. Windows 11 internal renders may have transparent shell pixels; UI Automation supplies the real control bounds. Windows 10 repository screenshots use the opaque fallback shell.
+- Full-app macOS XCUITest, Intel runtime execution, Windows ARM64, signed installers/Store packages, Authenticode signing, Developer ID and notarization remain unverified or unavailable. The local computer-use service failed internally during interactive macOS validation; native XCTest/SwiftUI hosting and live AppModel integration are the available evidence, not a substitute claim of complete XCUITest coverage.
+- No claim is made that every display/DPI setting was tested or that 60/120 FPS was measured. Gesture handlers reuse decoded images and update only geometry/masks; hardware-dependent frame-rate measurement remains separate.
+
+## Historical 0.2.0 Checks
+
 Recorded on 2026-09-15 with Xcode 27.0, Apple Swift 6.4, macOS SDK 27.0, Node.js 24.18.0, and arm64.
 
 Windows results were recorded on 2026-09-24 using the same self-contained x64 release candidate on:

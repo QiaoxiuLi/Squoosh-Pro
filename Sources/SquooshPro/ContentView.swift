@@ -66,6 +66,7 @@ struct ContentView: View {
 private struct CompressionWorkspace: View {
     @EnvironmentObject private var model: AppModel
     @State private var dropTargeted = false
+    @State private var compactTab = 1
 
     var body: some View {
         VStack(spacing: 0) {
@@ -83,17 +84,21 @@ private struct CompressionWorkspace: View {
                                 .frame(minWidth: 280, idealWidth: 310, maxWidth: 390)
                         }
                     } else {
-                        TabView {
+                        TabView(selection: $compactTab) {
                             QueueList()
                                 .tabItem { Label("图片", systemImage: "photo.on.rectangle") }
                                 .accessibilityIdentifier("compact.queue")
+                                .tag(0)
                             PreviewPane()
                                 .tabItem { Label("预览", systemImage: "rectangle.split.2x1") }
                                 .accessibilityIdentifier("compact.preview")
+                                .tag(1)
                             CompressionSettingsPane()
                                 .tabItem { Label("设置", systemImage: "slider.horizontal.3") }
                                 .accessibilityIdentifier("compact.settings")
+                                .tag(2)
                         }
+                        .onChange(of: model.selectedItemID) { _ in compactTab = 1 }
                     }
                 }
             }
@@ -409,24 +414,41 @@ private struct StatusIcon: View {
 
 private struct PreviewPane: View {
     @EnvironmentObject private var model: AppModel
-    @State private var divider = 0.5
-    @State private var zoom: CGFloat = 1
+    @StateObject private var navigation = PreviewNavigation()
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
+            VStack(alignment: .leading, spacing: 10) {
                 Text("效果预览").font(.headline)
-                Spacer()
-                Button { zoom = 1 } label: { Label("适应窗口", systemImage: "arrow.up.left.and.arrow.down.right") }.accessibilityIdentifier("preview.fit")
-                Button { zoom = 2 } label: { Text("100%") }.accessibilityIdentifier("preview.actualSize")
+                HStack(spacing: 8) {
+                    Button("适应窗口") { navigation.perform(.fit) }.accessibilityIdentifier("preview.fit")
+                    Button("100%") { navigation.perform(.actual) }.accessibilityIdentifier("preview.actualSize")
+                    Button { navigation.perform(.zoomOut) } label: { Image(systemName: "minus").frame(width: 20, height: 18) }
+                        .accessibilityLabel("缩小预览").accessibilityIdentifier("preview.zoomOut")
+                    Text("\(navigation.percent)%").monospacedDigit().frame(minWidth: 44).accessibilityIdentifier("preview.zoomValue")
+                    Button { navigation.perform(.zoomIn) } label: { Image(systemName: "plus").frame(width: 20, height: 18) }
+                        .accessibilityLabel("放大预览").accessibilityIdentifier("preview.zoomIn")
+                    Spacer(minLength: 0)
+                }
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.bordered)
             .padding(12)
             Divider()
             ZStack {
                 Color(nsColor: .windowBackgroundColor)
                 if let source = model.sourcePreview {
-                    BeforeAfterImage(source: source, output: model.outputPreview, divider: $divider, zoom: zoom)
+                    ComparisonPreview(source: source, output: model.outputPreview, dimensions: model.previewDimensions, navigation: navigation)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .overlay(alignment: .top) {
+                            HStack {
+                                Text("原图").padding(6).background(.regularMaterial, in: Capsule())
+                                Spacer()
+                                Text("输出").padding(6).background(.regularMaterial, in: Capsule())
+                            }
+                            .font(.caption)
+                            .padding(12)
+                            .allowsHitTesting(false)
+                        }
                 } else {
                     VStack(spacing: 8) {
                         Image(systemName: "photo.badge.exclamationmark").font(.largeTitle).foregroundStyle(.secondary)
@@ -439,11 +461,12 @@ private struct PreviewPane: View {
                         .padding(12).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
             Divider()
             VStack(alignment: .leading, spacing: 8) {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 86), alignment: .leading)], alignment: .leading, spacing: 12) {
-                    Metric(label: "原始", value: model.selectedItem.map { ByteCountFormatter.string(fromByteCount: Int64((try? $0.url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0), countStyle: .file) } ?? "—")
+                    Metric(label: "原始", value: model.selectedItem.flatMap { try? $0.url.resourceValues(forKeys: [.fileSizeKey]).fileSize }.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) } ?? "—")
                     Metric(label: "预计输出", value: model.previewBytes.map { ByteCountFormatter.string(fromByteCount: Int64($0), countStyle: .file) } ?? "—")
                     Metric(label: "输出尺寸", value: model.previewDimensions.map { "\($0.width)×\($0.height)" } ?? "—")
                     Metric(label: "质量", value: model.previewQuality.map(String.init) ?? "—")
@@ -453,41 +476,12 @@ private struct PreviewPane: View {
                         .foregroundStyle(.red)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                Text(model.previewError != nil ? "预览加载失败" : model.isPreviewing ? "正在加载预览" : model.outputPreview == nil ? "等待预览" : "预览已加载 · 拖动分界线对比，放大后可拖动画面")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .accessibilityIdentifier("preview.ready")
             }
             .padding(12)
         }
-    }
-}
-
-private struct BeforeAfterImage: View {
-    let source: NSImage
-    let output: NSImage?
-    @Binding var divider: Double
-    let zoom: CGFloat
-
-    var body: some View {
-        GeometryReader { geometry in
-            let x = geometry.size.width * divider
-            ZStack {
-                Image(nsImage: source).resizable().scaledToFit().scaleEffect(zoom)
-                if let output {
-                    Image(nsImage: output)
-                        .resizable().scaledToFit().scaleEffect(zoom)
-                        .mask(alignment: .leading) {
-                            HStack(spacing: 0) { Color.clear.frame(width: x); Rectangle() }
-                        }
-                }
-                Rectangle().fill(.white).shadow(color: .black.opacity(0.5), radius: 2).frame(width: 2).position(x: x, y: geometry.size.height / 2)
-                Circle().fill(.white).shadow(radius: 2).frame(width: 28, height: 28).overlay(Image(systemName: "arrow.left.and.right").foregroundStyle(.black).font(.caption)).position(x: x, y: geometry.size.height / 2)
-                VStack { HStack { Text("原图").padding(6).background(.regularMaterial, in: Capsule()); Spacer(); Text("输出").padding(6).background(.regularMaterial, in: Capsule()) }; Spacer() }.padding(12)
-            }
-            .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 0).onChanged { divider = min(1, max(0, $0.location.x / max(1, geometry.size.width))) })
-            .accessibilityIdentifier("preview.comparison")
-            .accessibilityLabel("原图与输出效果对比")
-            .accessibilityValue("分割位置 \(Int(divider * 100))%")
-        }
-        .padding(16)
     }
 }
 

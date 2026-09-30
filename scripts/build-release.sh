@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION="${SQUOOSH_VERSION:-0.1.0}"
+VERSION="${SQUOOSH_VERSION:-0.3.0}"
 BUILD_NUMBER="${SQUOOSH_BUILD_NUMBER:-1}"
 BUILD_ROOT="$PROJECT_ROOT/.build/release-app"
 ARTIFACT_DIR="$PROJECT_ROOT/Artifacts"

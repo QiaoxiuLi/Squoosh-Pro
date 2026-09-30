@@ -1,6 +1,6 @@
 # Implementation Status
 
-This file distinguishes implemented and verified behavior from source that still requires full-Xcode validation.
+This file distinguishes implemented behavior from current validation evidence. The latest release evidence is recorded in `TEST_RESULTS.md` under 0.3.0; older large-image and stress results remain historical, not new claims.
 
 | Area | Status | Evidence or remaining gate |
 | --- | --- | --- |
@@ -19,19 +19,19 @@ This file distinguishes implemented and verified behavior from source that still
 | SwiftUI/AppKit workspace source | Verified | Xcode 27.0 builds the complete application target |
 | WebKit offline codec adapter | Verified | Real WKWebView four-codec encode, CSP network block, cancellation, rebuild, post-rebuild encoding, and sandboxed app launch pass |
 | Image/folder import, recursion, drag/drop, thumbnail list | Implemented, partial UI verification | Native launch and file picker were exercised; full automated Finder matrix still needs XCUITest |
-| Responsive workspace and comparison controls | Verified with limitation | Native launch, empty state, compact copy/layout, and navigation were inspected; complete window-size automation still needs XCUITest |
+| Responsive workspace and comparison controls | Verified with limitation | Native layer pixel/geometry tests and real SwiftUI hosting at four sizes pass; live selection, file-change invalidation, cache and export pass; a complete XCUITest interaction matrix remains |
 | Batch pause/resume/cancel/failure retry | Implemented, UI automation gate remains | WASM interruption/rebuild and native AVIF helper termination pass; complete SwiftUI interaction matrix still needs XCUITest |
 | Manifest history | Implemented | Atomic JSON manifests; SQLite index not added |
 | Interrupted-task resume | Implemented, UI gate remains | Source/output bookmarks, stale handling, fingerprints, same-directory continuation, and cleanup implemented; bookmark round trip passes |
-| XCTest/XCUITest | XCTest verified; XCUITest source present | 9 XCTest cases pass; dedicated Xcode UI-test target is still required |
+| XCTest/XCUITest | XCTest verified; XCUITest gate remains | 12 core plus 6 native preview/application tests pass; dedicated full-app XCUITest target is still required |
 | Universal 2 command-line verification set | Verified slices | Core, WebKit check, native helper, and helper check report x86_64 + arm64; arm64 runs pass; Intel runtime blocked by absent Rosetta |
 | Universal 2 application | Verified slices | Application and native helper report x86_64 + arm64; ad-hoc signature verifies |
 | Developer ID signing/notarization/App Store | Not performed | No valid Developer ID identity is installed |
-| Windows WinUI 3 application | Verified on Windows 10 and 11 x64 | Full UI Automation and application-internal visual rendering pass on both systems |
+| Windows WinUI 3 application | Verified on Windows 10 and 11 x64 | Windows App SDK 2.5.1 / .NET 10.0.12; 52 targeted UI/visual checks pass on each tested system, not a claim of every possible workflow |
 | Windows JPEG/PNG/WebP/AVIF | Verified | Generated-image encode, decode, format, dimensions, and signature checks pass |
 | Windows strict 150 KB JPEG | Verified | Output is 142019 bytes at 999×636 on both tested systems; 150000-byte ceiling and source hash pass |
-| Windows compact layout | Verified | Start command and nonblank 904×641 client render pass after resizing the outer window to 920×680 |
+| Windows compact layout | Verified tested matrix | Outer-window sizes 640×480, 760×540, 920×680, 1280×800 and 1500×680; repeated compact/wide switching, settings and preset controls remain usable |
 | Windows preview cache | Verified | Bounded item/byte checks pass and UI export reuses unchanged preview results |
 | Windows release packaging | Verified with limitation | Self-contained x64 publish includes the required PRI resources; Authenticode signing is not configured |
 
-The artifacts may be published only as clearly labeled beta prereleases. They must not be described as signed, notarized, Store-ready, or stable until the corresponding platform gates are completed.
+Publication requires explicit user authorization. A public Release does not establish signing, notarization, Store readiness, universal device coverage, or completion of the remaining gates. Disclose those limits alongside the download; do not report skipped gates as passed.

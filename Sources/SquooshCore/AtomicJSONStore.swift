@@ -5,7 +5,11 @@ public struct AtomicJSONStore {
 
     public init(bundleIdentifier: String = "com.qiaoxiuli.squoosh-pro") throws {
         guard let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { throw SquooshProError.permissionDenied }
-        root = support.appendingPathComponent(bundleIdentifier, isDirectory: true)
+        try self.init(root: support.appendingPathComponent(bundleIdentifier, isDirectory: true))
+    }
+
+    public init(root: URL) throws {
+        self.root = root
         try FileManager.default.createDirectory(at: root.appendingPathComponent("Presets", isDirectory: true), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: root.appendingPathComponent("Jobs", isDirectory: true), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: root.appendingPathComponent("Recovery", isDirectory: true), withIntermediateDirectories: true)

@@ -11,7 +11,7 @@ required=(
 )
 for path in "${required[@]}"; do [[ -s "$PROJECT_ROOT/$path" ]] || { echo "Missing required file: $path" >&2; exit 1; }; done
 
-if find "$PROJECT_ROOT" -path "$PROJECT_ROOT/.git" -prune -o -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.heic' \) -print | grep -q .; then
+if find "$PROJECT_ROOT" \( -path "$PROJECT_ROOT/.git" -o -path "$PROJECT_ROOT/.build" -o -path "$PROJECT_ROOT/Artifacts" \) -prune -o -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.heic' \) -print | grep -q .; then
   echo "Unexpected photographic fixture found in the repository." >&2
   exit 1
 fi

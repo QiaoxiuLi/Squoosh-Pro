@@ -159,7 +159,7 @@ struct ApplicationSettingsView: View {
                 }
             }
             Section("版本") {
-                LabeledContent("Squoosh Pro", value: "0.1.0")
+                LabeledContent("Squoosh Pro", value: "0.3.0")
             }
         }
         .formStyle(.grouped)

@@ -248,7 +248,7 @@ public sealed class CompressionEngine
     {
         cancellationToken.ThrowIfCancellationRequested();
         using var image = new MagickImage(encoded);
-        if (Math.Max(image.Width, image.Height) > 1800) image.Resize(new MagickGeometry(1800, 1800) { IgnoreAspectRatio = false });
+        if (Math.Max(image.Width, image.Height) > 4096) image.Resize(new MagickGeometry(4096, 4096) { IgnoreAspectRatio = false });
         image.Format = MagickFormat.Png;
         using var stream = new MemoryStream();
         image.Write(stream, MagickFormat.Png);

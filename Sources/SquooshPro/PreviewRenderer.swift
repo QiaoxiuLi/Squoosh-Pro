@@ -7,7 +7,7 @@ final class PreviewRenderer: @unchecked Sendable {
     let usesHardwareAcceleration: Bool
 
     private let context: CIContext
-    private let maximumPixelSize = 2_560
+    private let maximumPixelSize = 4_096
 
     init(requestHardwareAcceleration: Bool) {
         if requestHardwareAcceleration, let device = MTLCreateSystemDefaultDevice() {
