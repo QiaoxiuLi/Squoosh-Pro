@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$PublishedDirectory,
-    [string]$Version = "0.3.0",
+    [string]$Version = "0.3.1",
     [string]$OutputRoot
 )
 
@@ -24,7 +24,7 @@ if (-not $sourceDirectory.Equals($packageDirectory, [StringComparison]::OrdinalI
     Copy-Item $sourceDirectory $packageDirectory -Recurse
 }
 
-foreach ($required in @("SquooshPro.exe", "SquooshPro.dll", "SquooshPro.pri")) {
+foreach ($required in @("SquooshPro.exe", "SquooshPro.dll", "SquooshPro.pri", "Assets\SquooshPro.ico", "Assets\SquooshPro.png")) {
     if (-not (Test-Path (Join-Path $packageDirectory $required))) {
         throw "Published application is missing $required."
     }

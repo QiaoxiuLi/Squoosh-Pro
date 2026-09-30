@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1 - 2026-09-30
+
+- Added a unified blue/teal picture-card application icon for macOS and Windows.
+- Registered multi-resolution ICNS resources for macOS system and Dock icons.
+- Embedded a nine-resolution ICO in the Windows executable and applied it to window/taskbar icons and the custom title bar.
+- Added native icon-resolution checks for application files, shortcuts and running windows without clearing system caches or changing user shortcuts.
+- Preserved the compression and adaptive preview workflows from 0.3.0.
+
 ## 0.2.0 - 2026-09-24
 
 - Published the Windows 10 and Windows 11 x64 build as a non-prerelease GitHub Release.

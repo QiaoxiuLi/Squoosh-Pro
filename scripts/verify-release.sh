@@ -8,6 +8,7 @@ required=(
   docs/ARCHITECTURE.md docs/DATA_SAFETY.md docs/PRESET_SCHEMA.md docs/TESTING.md docs/RELEASE.md docs/WINDOWS_FUTURE.md
   shared/contracts/preset.schema.json shared/contracts/codec-request.schema.json shared/contracts/codec-response.schema.json shared/contracts/job-report.schema.json
   third_party/UPSTREAM_COMMIT third_party/THIRD_PARTY_NOTICES.md
+  assets/icons/SquooshPro.png assets/icons/SquooshPro.icns assets/icons/SquooshPro.ico
 )
 for path in "${required[@]}"; do [[ -s "$PROJECT_ROOT/$path" ]] || { echo "Missing required file: $path" >&2; exit 1; }; done
 

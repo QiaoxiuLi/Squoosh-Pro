@@ -1,5 +1,36 @@
 # Test Results
 
+## 0.3.1: 2026-09-30
+
+This release changes application icons, version labels and icon packaging checks. The compression engine, presets, storage format and preview interaction remain unchanged from 0.3.0.
+
+### Current Passed Checks
+
+| Gate | Evidence |
+| --- | --- |
+| Shared artwork | 1024 x 1024 RGBA master; ICNS representations from 16 to 1024 pixels; nine independently decoded ICO frames at 16, 20, 24, 32, 40, 48, 64, 128 and 256 pixels |
+| macOS system icon | Release bundle declares `CFBundleIconFile` and contains the exact ICNS; NSWorkspace file-system icon and NSRunningApplication runtime/Dock icon match the branded artwork; unrelated Finder icon is rejected as a negative control |
+| macOS regression | 18 XCTest tests pass on macOS 26.6.2 (25G83), Apple Silicon |
+| macOS release | App and AVIF helper contain arm64 and x86_64 slices; ad-hoc deep signature verification, native launch and ZIP integrity pass |
+| Windows 10 | 58 UI checks pass on 22H2, build 19045.6466, using the full extracted final release ZIP |
+| Windows 11 | 58 UI checks pass on 25H2, build 26200.9457, against the same final release build |
+| Windows icon resolution | New checks read the embedded EXE icon, resolve a temporary `.lnk` through Windows Shell, compare WM_GETICON large/small window icons and inspect the custom title-bar image; all pass on both systems |
+| Windows regression | Existing decoded four-format previews, native divider drag, zoom, presets, responsive layouts and batch export pass on both systems; exported JPEG is 142019 bytes, 999 x 636, re-decodes successfully and preserves its source hash |
+| Windows core | Nine core check groups pass on the isolated Windows 11 build host |
+| Protected data | All 31 protected originals and 30 existing outputs retain their recorded SHA-256 values |
+
+Windows ZIP SHA-256: `45dbcfed79adfc199d169645c1dc57872be7e00fd7d6af4a20e0959b94101b8f`.
+
+macOS ZIP SHA-256: `55303f8d42aaa323c62ee00f985223af0cb28b6cba92487f0ed4a9d9ae7267ee`.
+
+The Windows EXE SHA-256 is `70766ea5c15e7f54ccc820bb91da2a7ca1d2bdb6455c65c6c1443316bfdfa2f0`; the application DLL SHA-256 is `0011582e41f27d8375438132514606c8705f43c6efbf4db91141710165d1f4d2`. Both machines report these exact values. Local test JSON and generated-artwork renders are retained under `Artifacts/Release-0.3.1/`.
+
+### Boundaries
+
+- Windows testing used only the authorized SSH ports 2210 and 2211. No remote Codex or remote-control software was used. Temporary interactive scheduled tasks were removed; existing user desktop shortcuts and global icon caches were not changed.
+- macOS applies an icon inset during system rendering. The first raw pixel comparison rejected that normal scaling difference; the final check normalizes artwork bounds, keeps its strict artwork threshold and rejects an unrelated icon rather than accepting any nonblank bitmap.
+- Developer ID signing, notarization, Authenticode signing, Intel runtime execution, Windows ARM64 and full-app macOS XCUITest were not added or claimed by this icon-only release. Earlier codec/integration evidence is recorded below, not presented as newly rerun.
+
 ## 0.3.0: 2026-09-29
 
 ### Environment

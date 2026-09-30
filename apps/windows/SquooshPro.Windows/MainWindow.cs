@@ -115,6 +115,7 @@ public sealed class MainWindow : Window
         var handle = WindowNative.GetWindowHandle(this);
         var id = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(handle);
         var appWindow = AppWindow.GetFromWindowId(id);
+        appWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "SquooshPro.ico"));
         appWindow.Resize(new global::Windows.Graphics.SizeInt32(1280, 800));
     }
 
@@ -141,7 +142,17 @@ public sealed class MainWindow : Window
         shell.RowDefinitions.Add(new RowDefinition { Height = new GridLength(44) });
         shell.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         var titleBar = new Grid { Padding = new Thickness(20, 0, 140, 0) };
-        titleBar.Children.Add(new TextBlock { Text = "Squoosh Pro", FontSize = 14, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+        var title = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, VerticalAlignment = VerticalAlignment.Center };
+        var appIcon = new Image
+        {
+            Source = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "SquooshPro.png"))),
+            Width = 24, Height = 24, IsHitTestVisible = false
+        };
+        AutomationProperties.SetAutomationId(appIcon, "window.appIcon");
+        AutomationProperties.SetName(appIcon, "Squoosh Pro 应用图标");
+        title.Children.Add(appIcon);
+        title.Children.Add(new TextBlock { Text = "Squoosh Pro", FontSize = 14, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+        titleBar.Children.Add(title);
         shell.Children.Add(titleBar);
         Grid.SetRow(navigation, 1);
         shell.Children.Add(navigation);
@@ -1269,7 +1280,7 @@ public sealed class MainWindow : Window
         AutomationProperties.SetAutomationId(hardware, "settings.hardwareAcceleration");
         hardware.Toggled += (_, _) => { preferences.HardwarePreview = hardware.IsOn; UserStorage.SavePreferences(preferences); if (selectedItem is not null) _ = SelectItemAsync(selectedItem); };
         panel.Children.Add(PreferenceCard("硬件加速预览", "使用高精度预览。遇到启动异常时自动关闭，不影响导出图片。", hardware));
-        panel.Children.Add(new TextBlock { Text = "Squoosh Pro 0.3.0 · Windows 10/11 x64", Foreground = ComparisonPreview.Brush("TextFillColorSecondaryBrush") });
+        panel.Children.Add(new TextBlock { Text = "Squoosh Pro 0.3.1 · Windows 10/11 x64", Foreground = ComparisonPreview.Brush("TextFillColorSecondaryBrush") });
         pageHost.Children.Add(PageScroll(panel));
     }
 

@@ -1,5 +1,7 @@
 # Squoosh Pro
 
+<img src="assets/icons/SquooshPro.png" alt="Squoosh Pro 应用图标" width="128" height="128">
+
 Squoosh Pro 是一款面向 macOS、Windows 10 和 Windows 11 的本地批量图片压缩工具。它可以在不上传图片、不覆盖原图的前提下，预览压缩效果并批量导出 JPEG（JPG）、PNG、WebP 或 AVIF。
 
 [下载最新版本](https://github.com/QiaoxiuLi/Squoosh-Pro/releases/latest) · [Windows 使用说明](docs/USER_GUIDE_WINDOWS_ZH.md) · [macOS 使用说明](docs/USER_GUIDE_ZH.md)
@@ -34,7 +36,7 @@ Squoosh Pro 是一款面向 macOS、Windows 10 和 Windows 11 的本地批量图
 
 ### Windows 10 / 11
 
-1. 从 [Releases](https://github.com/QiaoxiuLi/Squoosh-Pro/releases/latest) 下载 `Squoosh-Pro-0.3.0-Windows-x64.zip` 和同名 `.sha256` 文件。
+1. 从 [Releases](https://github.com/QiaoxiuLi/Squoosh-Pro/releases/latest) 下载 `Squoosh-Pro-0.3.1-Windows-x64.zip` 和同名 `.sha256` 文件。
 2. 右键 ZIP 并选择“全部解压”。请保留解压后的完整文件夹，不能只复制 `SquooshPro.exe`。
 3. 双击 `SquooshPro.exe` 启动。
 
@@ -44,7 +46,7 @@ Windows 版本支持 64 位 Windows 10 和 Windows 11。发布包已经包含所
 
 ### macOS
 
-从 [Releases](https://github.com/QiaoxiuLi/Squoosh-Pro/releases/latest) 下载 `Squoosh-Pro-0.3.0-macOS-universal.zip`，解压后将 `Squoosh Pro.app` 放入“应用程序”。支持 macOS 13 或更高版本，安装包包含 Apple 芯片和 Intel Mac 的程序。
+从 [Releases](https://github.com/QiaoxiuLi/Squoosh-Pro/releases/latest) 下载 `Squoosh-Pro-0.3.1-macOS-universal.zip`，解压后将 `Squoosh Pro.app` 放入“应用程序”。支持 macOS 13 或更高版本，安装包包含 Apple 芯片和 Intel Mac 的程序。
 
 当前 macOS 下载包尚未经过 Developer ID 签名和 Apple 公证。请只从本仓库下载，不要关闭系统安全检查。
 

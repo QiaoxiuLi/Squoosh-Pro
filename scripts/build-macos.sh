@@ -25,6 +25,7 @@ cp "$BIN_PATH/SquooshPro" "$APP_PATH/Contents/MacOS/SquooshPro"
 cp "$BIN_PATH/SquooshNativeCodecWorker" "$APP_PATH/Contents/Helpers/SquooshNativeCodecWorker"
 if [[ -d "$BIN_PATH/SquooshPro_SquooshPro.bundle" ]]; then cp -R "$BIN_PATH/SquooshPro_SquooshPro.bundle" "$APP_PATH/Contents/Resources/"; fi
 if [[ -d "$BIN_PATH/SquooshPro_SquooshCodecHost.bundle" ]]; then cp -R "$BIN_PATH/SquooshPro_SquooshCodecHost.bundle" "$APP_PATH/Contents/Resources/"; fi
+cp "$PROJECT_ROOT/assets/icons/SquooshPro.icns" "$APP_PATH/Contents/Resources/SquooshPro.icns"
 
 PLIST="$APP_PATH/Contents/Info.plist"
 plutil -create xml1 "$PLIST"
@@ -33,7 +34,8 @@ plutil -insert CFBundleDisplayName -string "Squoosh Pro" "$PLIST"
 plutil -insert CFBundleIdentifier -string "com.qiaoxiuli.squoosh-pro" "$PLIST"
 plutil -insert CFBundleExecutable -string "SquooshPro" "$PLIST"
 plutil -insert CFBundlePackageType -string "APPL" "$PLIST"
-plutil -insert CFBundleShortVersionString -string "0.3.0" "$PLIST"
+plutil -insert CFBundleIconFile -string "SquooshPro.icns" "$PLIST"
+plutil -insert CFBundleShortVersionString -string "0.3.1" "$PLIST"
 plutil -insert CFBundleVersion -string "1" "$PLIST"
 plutil -insert LSMinimumSystemVersion -string "13.0" "$PLIST"
 plutil -insert NSHighResolutionCapable -bool true "$PLIST"

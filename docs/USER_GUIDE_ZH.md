@@ -8,11 +8,11 @@ Squoosh Pro 是一款在 Mac 本地运行的批量图片压缩工具。图片不
 - Apple 芯片 Mac 或 Intel 芯片 Mac
 - 建议预留足够的磁盘空间存放压缩结果
 
-当前 0.3.0 安装包使用临时签名，尚未经过 Apple 公证。首次打开时，macOS 可能要求额外确认。请只从本项目的 GitHub Release 页面下载。
+当前 0.3.1 安装包使用临时签名，尚未经过 Apple 公证。首次打开时，macOS 可能要求额外确认。请只从本项目的 GitHub Release 页面下载。
 
 ## 下载和安装
 
-1. 在 GitHub Release 页面下载 `Squoosh-Pro-0.3.0-macOS-universal.zip`。
+1. 在 GitHub Release 页面下载 `Squoosh-Pro-0.3.1-macOS-universal.zip`。
 2. 双击 ZIP 文件解压。
 3. 将 `Squoosh Pro.app` 拖入“应用程序”文件夹。
 4. 第一次启动时，在 Finder 中右键点击 `Squoosh Pro.app`，选择“打开”，然后在系统提示中再次选择“打开”。
@@ -126,7 +126,7 @@ Squoosh Pro 是一款在 Mac 本地运行的批量图片压缩工具。图片不
 Release 页面同时提供 `.sha256` 文件。需要校验时，可以在“终端”中进入下载目录后运行：
 
 ```bash
-shasum -a 256 -c Squoosh-Pro-0.3.0-macOS-universal.zip.sha256
+shasum -a 256 -c Squoosh-Pro-0.3.1-macOS-universal.zip.sha256
 ```
 
 显示 `OK` 表示下载文件与发布文件一致。

@@ -13,16 +13,19 @@
     <PlatformTarget>x64</PlatformTarget>
     <Platforms>x64</Platforms>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\..\..\assets\icons\SquooshPro.ico</ApplicationIcon>
     <RootNamespace>SquooshPro.Windows</RootNamespace>
     <AssemblyName>SquooshPro</AssemblyName>
-    <Version>0.3.0</Version>
-    <FileVersion>0.3.0.1</FileVersion>
-    <AssemblyVersion>0.3.0.0</AssemblyVersion>
+    <Version>0.3.1</Version>
+    <FileVersion>0.3.1.1</FileVersion>
+    <AssemblyVersion>0.3.1.0</AssemblyVersion>
     <CetCompat>false</CetCompat>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\SquooshPro.Core\SquooshPro.Core.csproj" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+    <Content Include="..\..\..\assets\icons\SquooshPro.ico" Link="Assets\SquooshPro.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\..\assets\icons\SquooshPro.png" Link="Assets\SquooshPro.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <Target Name="AddProjectPriToResolvedFileToPublish"
           BeforeTargets="ComputeResolvedFilesToPublishList"

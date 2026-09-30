@@ -61,6 +61,41 @@ async Task CaptureRenderedState(string name)
 
 try
 {
+    var iconPath = Path.Combine(Path.GetDirectoryName(executable)!, "Assets", "SquooshPro.ico");
+    using (var iconStream = File.OpenRead(iconPath))
+    using (var reader = new BinaryReader(iconStream))
+    {
+        var reserved = reader.ReadUInt16(); var type = reader.ReadUInt16(); var count = reader.ReadUInt16();
+        var sizes = new List<int>();
+        for (var i = 0; i < count; i++)
+        {
+            var width = reader.ReadByte(); sizes.Add(width == 0 ? 256 : width);
+            reader.ReadBytes(15);
+        }
+        Record("multi-resolution application icon", reserved == 0 && type == 1 && sizes.SequenceEqual(new[] { 16, 20, 24, 32, 40, 48, 64, 128, 256 }), string.Join(",", sizes));
+    }
+    using (var executableIcon = Icon.ExtractAssociatedIcon(executable))
+    {
+        Record("executable shell icon", executableIcon is not null && MatchesApplicationIcon(executableIcon, iconPath, Path.Combine(artifactRoot, "executable-icon.png")));
+    }
+    var shortcutPath = Path.Combine(artifactRoot, "Squoosh Pro.lnk");
+    var shellType = Type.GetTypeFromProgID("WScript.Shell")!;
+    dynamic shortcutShell = Activator.CreateInstance(shellType)!;
+    dynamic shortcut = shortcutShell.CreateShortcut(shortcutPath);
+    try { shortcut.TargetPath = executable; shortcut.Save(); }
+    finally { Marshal.FinalReleaseComObject(shortcut); Marshal.FinalReleaseComObject(shortcutShell); }
+    var shellInfo = new ShellFileInfo();
+    SHGetFileInfo(shortcutPath, 0, ref shellInfo, (uint)Marshal.SizeOf<ShellFileInfo>(), 0x100);
+    if (shellInfo.Icon != IntPtr.Zero)
+    {
+        try
+        {
+            using var shortcutIcon = (Icon)Icon.FromHandle(shellInfo.Icon).Clone();
+            Record("desktop shortcut shell icon", MatchesApplicationIcon(shortcutIcon, iconPath, Path.Combine(artifactRoot, "shortcut-icon.png")));
+        }
+        finally { DestroyIcon(shellInfo.Icon); }
+    }
+    else Record("desktop shortcut shell icon", false, "Windows Shell did not resolve an icon");
     await CreateInputPng(input);
     var sourceHash = await Hash(input);
     app = Process.Start(new ProcessStartInfo(executable)
@@ -75,6 +110,17 @@ try
     var hwnd = GetAncestor(new IntPtr(window.Current.NativeWindowHandle), 2);
     window = AutomationElement.FromHandle(hwnd);
     WaitUntil(() => GetWindowRect(hwnd, out var bounds) && bounds.Right - bounds.Left > 500 && bounds.Bottom - bounds.Top > 400, TimeSpan.FromSeconds(10));
+    foreach (var (kind, name) in new[] { (1, "taskbar / large window icon"), (0, "small window icon") })
+    {
+        SendMessageTimeout(hwnd, 0x007F, new IntPtr(kind), IntPtr.Zero, 2, 2000, out var handle);
+        if (handle != IntPtr.Zero)
+        {
+            using var windowIcon = (Icon)Icon.FromHandle(handle).Clone();
+            Record(name, MatchesApplicationIcon(windowIcon, iconPath, Path.Combine(artifactRoot, $"window-icon-{kind}.png")));
+        }
+        else Record(name, false, "The window did not return a WM_GETICON icon");
+    }
+    Record("title bar branded icon", WaitUntil(() => IsInside(window, Find(window, "window.appIcon")), TimeSpan.FromSeconds(10)));
 
     AutomationElement? search = null;
     WaitUntil(() => (search = Find(window, "queue.search") ?? FindByName(window, "搜索图片")) is not null, TimeSpan.FromSeconds(20));
@@ -365,6 +411,27 @@ static (bool Passed, string Detail) AnalyzeRenderedImage(string path)
         colors.Count));
 }
 
+static bool MatchesApplicationIcon(Icon icon, string path, string capturePath)
+{
+    using var actual = icon.ToBitmap();
+    using var expectedIcon = new Icon(path, actual.Size);
+    using var expected = expectedIcon.ToBitmap();
+    actual.Save(capturePath, ImageFormat.Png);
+    if (actual.Size != expected.Size) return false;
+    long difference = 0;
+    var opaque = 0;
+    for (var y = 0; y < actual.Height; y++)
+    for (var x = 0; x < actual.Width; x++)
+    {
+        var a = actual.GetPixel(x, y); var b = expected.GetPixel(x, y);
+        // Shell shortcut badges may cover the bottom-left quarter of an icon.
+        if (x < actual.Width / 2 && y >= actual.Height / 2) continue;
+        difference += Math.Abs(a.R - b.R) + Math.Abs(a.G - b.G) + Math.Abs(a.B - b.B) + Math.Abs(a.A - b.A);
+        if (a.A > 128) opaque++;
+    }
+    return opaque > actual.Width * actual.Height / 3 && difference / (double)(actual.Width * actual.Height * 4 * 255) < 0.035;
+}
+
 static async Task CreateInputPng(string path)
 {
     var ppm = Path.ChangeExtension(path, ".ppm");
@@ -416,6 +483,25 @@ static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, i
 
 [DllImport("user32.dll")]
 static extern bool PrintWindow(IntPtr hwnd, IntPtr deviceContext, uint flags);
+
+[DllImport("user32.dll")]
+static extern IntPtr SendMessageTimeout(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam, uint flags, uint timeout, out IntPtr result);
+
+[DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+static extern IntPtr SHGetFileInfo(string path, uint attributes, ref ShellFileInfo info, uint size, uint flags);
+
+[DllImport("user32.dll")]
+static extern bool DestroyIcon(IntPtr icon);
+
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+struct ShellFileInfo
+{
+    public IntPtr Icon;
+    public int IconIndex;
+    public uint Attributes;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string DisplayName;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 80)] public string TypeName;
+}
 
 record struct RECT(int Left, int Top, int Right, int Bottom);
 [StructLayout(LayoutKind.Sequential)]

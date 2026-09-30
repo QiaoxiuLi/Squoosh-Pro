@@ -2,10 +2,26 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION="${SQUOOSH_VERSION:-0.3.0}"
+VERSION="${SQUOOSH_VERSION:-0.3.1}"
 BUILD_NUMBER="${SQUOOSH_BUILD_NUMBER:-1}"
 BUILD_ROOT="$PROJECT_ROOT/.build/release-app"
-ARTIFACT_DIR="$PROJECT_ROOT/Artifacts"
+ARTIFACT_DIR="${SQUOOSH_ARTIFACT_DIR:-$PROJECT_ROOT/Artifacts}"
+case "$ARTIFACT_DIR" in
+  "$PROJECT_ROOT/Artifacts"|"$PROJECT_ROOT/Artifacts/"*) ;;
+  *) echo "Release output must stay inside project Artifacts." >&2; exit 1 ;;
+esac
+case "$ARTIFACT_DIR/" in
+  *'/../'*|*'/./'*) echo "Release output cannot contain parent-directory traversal." >&2; exit 1 ;;
+esac
+existing_parent="$ARTIFACT_DIR"
+while [[ ! -d "$existing_parent" ]]; do existing_parent="$(dirname "$existing_parent")"; done
+resolved_parent="$(cd "$existing_parent" && pwd -P)"
+case "$resolved_parent" in
+  "$PROJECT_ROOT"|"$PROJECT_ROOT/Artifacts"|"$PROJECT_ROOT/Artifacts/"*) ;;
+  *) echo "Release output cannot follow a symlink outside project Artifacts." >&2; exit 1 ;;
+esac
+mkdir -p "$ARTIFACT_DIR"
+ARTIFACT_DIR="$(cd "$ARTIFACT_DIR" && pwd -P)"
 APP_PATH="$ARTIFACT_DIR/Squoosh Pro.app"
 ZIP_NAME="Squoosh-Pro-$VERSION-macOS-universal.zip"
 ZIP_PATH="$ARTIFACT_DIR/$ZIP_NAME"
@@ -33,6 +49,7 @@ required=(
   "$INTEL_PRODUCTS/SquooshNativeCodecWorker"
   "$ARM_PRODUCTS/SquooshPro_SquooshPro.bundle"
   "$ARM_PRODUCTS/SquooshPro_SquooshCodecHost.bundle"
+  "$PROJECT_ROOT/assets/icons/SquooshPro.icns"
 )
 for path in "${required[@]}"; do
   [[ -e "$path" ]] || { echo "Missing release input: $path" >&2; exit 1; }
@@ -53,6 +70,7 @@ xcrun lipo -create "$ARM_PRODUCTS/SquooshNativeCodecWorker" "$INTEL_PRODUCTS/Squ
   -output "$APP_PATH/Contents/Helpers/SquooshNativeCodecWorker"
 cp -R "$ARM_PRODUCTS/SquooshPro_SquooshPro.bundle" "$APP_PATH/Contents/Resources/"
 cp -R "$ARM_PRODUCTS/SquooshPro_SquooshCodecHost.bundle" "$APP_PATH/Contents/Resources/"
+cp "$PROJECT_ROOT/assets/icons/SquooshPro.icns" "$APP_PATH/Contents/Resources/SquooshPro.icns"
 
 PLIST="$APP_PATH/Contents/Info.plist"
 plutil -create xml1 "$PLIST"
@@ -61,6 +79,7 @@ plutil -insert CFBundleDisplayName -string "Squoosh Pro" "$PLIST"
 plutil -insert CFBundleIdentifier -string "com.qiaoxiuli.squoosh-pro" "$PLIST"
 plutil -insert CFBundleExecutable -string "SquooshPro" "$PLIST"
 plutil -insert CFBundlePackageType -string "APPL" "$PLIST"
+plutil -insert CFBundleIconFile -string "SquooshPro.icns" "$PLIST"
 plutil -insert CFBundleShortVersionString -string "$VERSION" "$PLIST"
 plutil -insert CFBundleVersion -string "$BUILD_NUMBER" "$PLIST"
 plutil -insert LSApplicationCategoryType -string "public.app-category.graphics-design" "$PLIST"
